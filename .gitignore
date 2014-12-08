@@ -1,0 +1,10 @@
+/log
+/html
+/*.egg-info
+*~
+*.pyc
+*.pyo
+#*#
+/dist
+/org/wayround/aipsetup/unicorn_distro/*.sqlite
+/MANIFEST
