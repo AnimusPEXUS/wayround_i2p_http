@@ -172,26 +172,17 @@ class HTTPResponse:
         output method
         """
 
-        print("sis 01")
         header_bytes = self._format_response_header(encoding)
-
-        print("sis 02")
 
         header_sent = False
 
         for i in self.iterable_body:
 
-            print("sis 03 01")
-
             if not header_sent:
                 header_sent = True
-                print("sis 03 sh")
                 self._send_header(socket, header_bytes, bs, stop_event)
 
-            print("sis 03 02")
-
             if stop_event is not None and stop_event.is_set():
-                print("sis 03 break")
                 break
 
             if not isinstance(i, bytes):
@@ -201,13 +192,8 @@ class HTTPResponse:
 
             self._send_iteration(socket, i, bs, stop_event)
 
-            print("sis 03 end")
-
         if not header_sent:
-            print("sis 04")
             self._send_header(socket, header_bytes, bs, stop_event)
-
-        print("sis end")
 
         return
 
@@ -231,8 +217,6 @@ class HTTPResponse:
             # TODO: use org.wayround.utils.stream module here
             to_send = data[:bs]
             data = data[bs:]
-
-            print("sending: {}".format(to_send))
 
             while len(to_send) != 0:
                 sent_number = socket.send(to_send)
