@@ -7,7 +7,7 @@ import http.client
 import org.wayround.mail.message
 
 HTTP_MESSAGE_REQUEST_REGEXP = re.compile(
-    rb'(?P<method>\w+) (?P<requesttarget>.+?) (?P<httpversion>)'
+    rb'(?P<method>\w+) (?P<requesttarget>.+?) (?P<httpversion>.*)'
     )
 
 HTTP_STATUS_LINE_TEMPLATE = '{httpversion} {statuscode} {reasonphrase}'
@@ -399,13 +399,8 @@ def parse_header(bites_data, line_terminator=b'\r\n'):
 
         value = b''.join(value)
 
-        # print('value == {}'.format(value))
-        # print('value[0] == {}'.format(value[0]))
-
         if value[0] == 32:
             value = value[1:]
-
-        # print('value == {}'.format(value))
 
         header_fields.append((name, value,))
 
