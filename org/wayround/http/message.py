@@ -55,10 +55,22 @@ class HTTPRequest:
         self.header_fields = header_fields
         return
 
+    @property
+    def method(self):
+        return self.request_line_parsed['method']
+
+    @property
+    def requesttarget(self):
+        return self.request_line_parsed['requesttarget']
+
+    @property
+    def httpversion(self):
+        return self.request_line_parsed['httpversion']
+
     def __repr__(self):
         return pprint.pformat(
             {
-                'ident': self.transaction_id,
+                'transaction_id': self.transaction_id,
                 'socket_server': self.socket_server,
                 'serv_stop_event': self.serv_stop_event,
                 'sock': self.sock,
@@ -68,7 +80,7 @@ class HTTPRequest:
                 }
             )
 
-    def get_decoded_request(encoding='utf-8'):
+    def get_decoded_request(self, encoding='utf-8'):
         """
         this only decodes self.request_line_parsed to string values.
         to unquote use other functions.
@@ -86,7 +98,7 @@ class HTTPRequest:
 
         return ret
 
-    def get_decoded_header_fields(encoding='utf-8'):
+    def get_decoded_header_fields(self, encoding='utf-8'):
         """
         this only decodes self.header_fields to string values.
         to unquote use other functions.
@@ -384,6 +396,16 @@ def parse_header(bites_data, line_terminator=b'\r\n'):
             else:
                 i = ii
                 break
+
+        value = b''.join(value)
+
+        # print('value == {}'.format(value))
+        # print('value[0] == {}'.format(value[0]))
+
+        if value[0] == 32:
+            value = value[1:]
+
+        # print('value == {}'.format(value))
 
         header_fields.append((name, value,))
 

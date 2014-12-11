@@ -2,8 +2,8 @@
 import socket
 import logging
 
-import org.wayround.server.socket_server
-import org.wayround.server.http_server
+import org.wayround.utils.socket_server
+import org.wayround.http.server
 import org.wayround.http.message
 
 
@@ -25,7 +25,7 @@ def hc(request):
         )
     return resp
 
-hs = org.wayround.server.http_server.HTTPServer(
+hs = org.wayround.http.server.HTTPServer(
     hc
     )
 
@@ -33,7 +33,7 @@ sock = socket.socket()
 sock.bind(('127.0.0.1', 8080))
 sock.listen(5)
 
-ss = org.wayround.server.socket_server.SocketServer(
+ss = org.wayround.utils.socket_server.SocketServer(
     sock,
     hs.callable_for_socket_server
     )
@@ -43,6 +43,8 @@ try:
     print("waiting ss")
     ss.wait()
     print("ss exited")
+except KeyboardInterrupt:
+    ss.stop()
 except:
     logging.exception("ERROR")
     
