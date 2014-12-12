@@ -10,8 +10,6 @@ HTTP_MESSAGE_REQUEST_REGEXP = re.compile(
     rb'(?P<method>\w+) (?P<requesttarget>.+?) (?P<httpversion>.*)'
     )
 
-HTTP_STATUS_LINE_TEMPLATE = '{httpversion} {statuscode} {reasonphrase}'
-
 
 class InputDataLimitReached(Exception):
     pass
@@ -230,6 +228,8 @@ class HTTPResponse:
             to_send = data[:bs]
             data = data[bs:]
 
+            # print("sending data to socket: {}".format(to_send))
+
             while len(to_send) != 0:
                 sent_number = socket.send(to_send)
                 if sent_number == len(to_send):
@@ -240,18 +240,21 @@ class HTTPResponse:
         return
 
 
+def format_status(statuscode, reasonphrase=None):
+    statuscode = int(statuscode)
+    if reasonphrase is None:
+        reasonphrase = http.client.responses[statuscode]
+    return '{} {}'.format(statuscode, reasonphrase)
+
+
 def format_status_line(statuscode, reasonphrase=None, httpversion='HTTP/1.1'):
     """
     No quoting done by this function
     """
-    statuscode = int(statuscode)
-    if reasonphrase is None:
-        reasonphrase = http.client.responses[statuscode]
-    ret = HTTP_STATUS_LINE_TEMPLATE.format(
-        httpversion=httpversion,
-        statuscode=statuscode,
-        reasonphrase=reasonphrase)
-    return ret
+    return '{} {}'.format(
+        format_status(statuscode, reasonphrase),
+        httpversion
+        )
 
 
 def determine_line_terminator(text):
