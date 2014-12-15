@@ -4,7 +4,6 @@ import re
 import urllib.parse
 import http.client
 
-import org.wayround.mail.message
 
 HTTP_MESSAGE_REQUEST_REGEXP = re.compile(
     rb'(?P<method>\w+) (?P<requesttarget>.+?) (?P<httpversion>.*)'
