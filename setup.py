@@ -12,6 +12,9 @@ setup(
     packages=[
         'org.wayround.http'
         ],
+    install_requires=[
+        'org_wayround_utils'
+        ]
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)'
         ]
