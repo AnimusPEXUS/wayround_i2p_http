@@ -168,7 +168,7 @@ class HTTPResponse:
 
     def send_into_socket(
             self,
-            socket,
+            sock,
             bs=1024,
             stop_event=None,
             encoding='utf-8'
@@ -189,7 +189,7 @@ class HTTPResponse:
 
             if not header_sent:
                 header_sent = True
-                self._send_header(socket, header_bytes, bs, stop_event)
+                self._send_header(sock, header_bytes, bs, stop_event)
 
             if stop_event is not None and stop_event.is_set():
                 break
@@ -199,19 +199,19 @@ class HTTPResponse:
                     i = str(i)
                 i = bytes(i, encoding=encoding)
 
-            self._send_iteration(socket, i, bs, stop_event)
+            self._send_iteration(sock, i, bs, stop_event)
 
         if not header_sent:
-            self._send_header(socket, header_bytes, bs, stop_event)
+            self._send_header(sock, header_bytes, bs, stop_event)
 
         return
 
-    def _send_header(self, socket, header_bytes, bs, stop_event=None):
-        self._send_iteration(socket, header_bytes, bs, stop_event)
-        self._send_iteration(socket, b'\r\n', bs, stop_event)
+    def _send_header(self, sock, header_bytes, bs, stop_event=None):
+        self._send_iteration(sock, header_bytes, bs, stop_event)
+        self._send_iteration(sock, b'\r\n', bs, stop_event)
         return
 
-    def _send_iteration(self, socket, data, bs, stop_event=None):
+    def _send_iteration(self, sock, data, bs, stop_event=None):
         if not isinstance(data, bytes):
             raise TypeError("`data' must be bytes")
 
@@ -230,8 +230,9 @@ class HTTPResponse:
             # print("sending data to socket: {}".format(to_send))
 
             while len(to_send) != 0:
-                sent_number = socket.send(to_send)
+                sent_number = sock.send(to_send)
                 if sent_number == len(to_send):
+                    # print('sent: {}'.format(to_send[:sent_number]))
                     break
                 else:
                     to_send = to_send[sent_number:]
@@ -251,8 +252,8 @@ def format_status_line(statuscode, reasonphrase=None, httpversion='HTTP/1.1'):
     No quoting done by this function
     """
     return '{} {}'.format(
-        format_status(statuscode, reasonphrase),
-        httpversion
+        httpversion,
+        format_status(statuscode, reasonphrase)
         )
 
 
