@@ -29,7 +29,7 @@ class HTTPRequest:
     instances and throw them away.
 
     this class instances only formed by http server implimentations, like
-    org.wayround.server.http_server
+    wayround_org.server.http_server
     """
 
     def __init__(
@@ -223,7 +223,7 @@ class HTTPResponse:
             if len(data) == 0:
                 break
 
-            # TODO: use org.wayround.utils.stream module here
+            # TODO: use wayround_org.utils.stream module here
             to_send = data[:bs]
             data = data[bs:]
 

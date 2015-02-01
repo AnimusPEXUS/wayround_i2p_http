@@ -3,17 +3,17 @@
 from setuptools import setup
 
 setup(
-    name='org_wayround_http',
-    version='0.1.1',
+    name='wayround_org_http',
+    version='0.2',
     description='http realisation',
     author='Alexey Gorshkov',
     author_email='animus@wayround.org',
-    url='https://github.com/AnimusPEXUS/org_wayround_http',
+    url='https://github.com/AnimusPEXUS/wayround_org_http',
     packages=[
-        'org.wayround.http'
+        'wayround_org.http'
         ],
     install_requires=[
-        'org_wayround_utils'
+        'wayround_org_utils'
         ],
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)'

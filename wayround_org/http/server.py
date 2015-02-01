@@ -2,7 +2,7 @@
 import pprint
 import logging
 
-import org.wayround.http.message
+import wayround_org.http.message
 
 
 class HTTPServer:
@@ -24,9 +24,9 @@ class HTTPServer:
         callable.
 
         func - must be callable and accept arguments:
-            request - instance of org.wayround.http.message.HTTPRequest
+            request - instance of wayround_org.http.message.HTTPRequest
 
-        func - must return instance of org.wayround.http.message.HTTPResponse
+        func - must return instance of wayround_org.http.message.HTTPResponse
         """
         if not callable(func):
             raise ValueError("`func' must be callable")
@@ -49,7 +49,7 @@ class HTTPServer:
 
         try:
             header_bytes, line_terminator = \
-                org.wayround.http.message.read_header(
+                wayround_org.http.message.read_header(
                     sock,
                     self._header_size_limit
                     )
@@ -61,7 +61,7 @@ class HTTPServer:
 
             try:
                 request_line_parsed, header_fields = \
-                    org.wayround.http.message.parse_header(
+                    wayround_org.http.message.parse_header(
                         header_bytes,
                         line_terminator
                         )
@@ -71,7 +71,7 @@ class HTTPServer:
                     )
             else:
 
-                req = org.wayround.http.message.HTTPRequest(
+                req = wayround_org.http.message.HTTPRequest(
                     transaction_id,
                     serv,
                     serv_stop_event,
@@ -83,9 +83,9 @@ class HTTPServer:
 
                 res = self._func(req)
 
-                if not isinstance(res, org.wayround.http.message.HTTPResponse):
+                if not isinstance(res, wayround_org.http.message.HTTPResponse):
                     raise TypeError(
-                        "only org.wayround.http.message.HTTPResponse type is "
+                        "only wayround_org.http.message.HTTPResponse type is "
                         "acceptable as response"
                         )
 
