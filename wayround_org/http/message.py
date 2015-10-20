@@ -240,6 +240,25 @@ class HTTPResponse:
         return
 
 
+class HTTPError(HTTPResponse):
+    """
+    Truncated shortcut for HTTPResponse
+
+    Implemented as driop in replacement for same named class of other http
+    implimentations.
+    """
+
+    def __init__(self, code, message):
+        super().__init__(
+            code,
+            {
+                'Content-Type': 'text/plain; charset=UTF-8'
+                },
+            str(message)
+            )
+        return
+
+
 def format_status(statuscode, reasonphrase=None):
     statuscode = int(statuscode)
     if reasonphrase is None:
@@ -408,3 +427,73 @@ def parse_header(bites_data, line_terminator=b'\r\n'):
         header_fields.append((name, value,))
 
     return request_line_parsed, header_fields
+
+
+def read_and_parse_header(
+        sock,
+        limit=(1 * 1024 ** 2),
+        header_already_parsed=None,
+        header_already_readen=None
+        ):
+    
+    """
+    
+    if header_already_readen and/or header_already_parsed defined, they
+    should be results of wayround_org.http.message.read_header() and
+    wayround_org.http.message.parse_header() respectively.
+
+    Note 1: if header_already_parsed is given, then:
+            header_already_readen is not used
+
+    Note 2: obviously, if header_already_readen or
+            header_already_parsed is given, then:
+            socket input data position should be after header part
+    """
+
+    error = False
+
+    # NOTE: next line is for visual simmetry
+    if not error:
+
+        if header_already_parsed is None:
+            if header_already_readen is None:
+
+                try:
+                    header_bytes, line_terminator = read_header(
+                        sock,
+                        limit
+                        )
+                except:
+                    logging.exception(
+                        "Error splitting HTTP header from the rest of the body"
+                        )
+                    error = True
+
+            else:
+                header_bytes, line_terminator = header_already_readen
+
+    if not error:
+
+        if header_already_parsed is None:
+
+            try:
+                request_line_parsed, header_fields = parse_header(
+                    header_bytes,
+                    line_terminator
+                    )
+            except:
+                logging.exception(
+                    "Error parsing header. Maybe it's not an HTTP"
+                    )
+                error = True
+
+        else:
+            request_line_parsed, header_fields = header_already_parsed
+
+    return (
+        header_bytes,
+        line_terminator,
+        request_line_parsed,
+        header_fields,
+        error
+        )

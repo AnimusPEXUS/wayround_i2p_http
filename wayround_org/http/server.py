@@ -44,54 +44,49 @@ class HTTPServer:
             serv,
             serv_stop_event,
             sock,
-            addr
+            addr,
+            header_already_parsed=None,
+            header_already_readen=None
             ):
+        """
 
-        try:
-            header_bytes, line_terminator = \
-                wayround_org.http.message.read_header(
-                    sock,
-                    self._header_size_limit
-                    )
-        except:
-            logging.exception(
-                "Error splitting HTTP header from the rest of the body"
+        on header_already_parsed and header_already_readen params
+        read description for read_and_parse_header() function - those params
+        simply passed to it
+        """
+
+        (header_bytes, line_terminator,
+            request_line_parsed, header_fields,
+            error) = wayround_org.http.message.read_and_parse_header(
+                sock,
+                self._header_size_limit,
+                header_already_parsed=header_already_parsed,
+                header_already_readen=header_already_readen
+            )
+
+        if not error:
+
+            req = wayround_org.http.message.HTTPRequest(
+                transaction_id,
+                serv,
+                serv_stop_event,
+                sock,
+                addr,
+                request_line_parsed,
+                header_fields
                 )
-        else:
 
-            try:
-                request_line_parsed, header_fields = \
-                    wayround_org.http.message.parse_header(
-                        header_bytes,
-                        line_terminator
-                        )
-            except:
-                logging.exception(
-                    "Error parsing header. Maybe it's not an HTTP"
-                    )
-            else:
+            res = self._func(req)
 
-                req = wayround_org.http.message.HTTPRequest(
-                    transaction_id,
-                    serv,
-                    serv_stop_event,
-                    sock,
-                    addr,
-                    request_line_parsed,
-                    header_fields
+            if not isinstance(res, wayround_org.http.message.HTTPResponse):
+                raise TypeError(
+                    "only wayround_org.http.message.HTTPResponse type is "
+                    "acceptable as response"
                     )
 
-                res = self._func(req)
-
-                if not isinstance(res, wayround_org.http.message.HTTPResponse):
-                    raise TypeError(
-                        "only wayround_org.http.message.HTTPResponse type is "
-                        "acceptable as response"
-                        )
-
-                res.send_into_socket(
-                    sock,
-                    encoding=self._output_into_socket_encoding
-                    )
+            res.send_into_socket(
+                sock,
+                encoding=self._output_into_socket_encoding
+                )
 
         return
