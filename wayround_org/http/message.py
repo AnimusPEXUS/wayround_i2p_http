@@ -435,9 +435,8 @@ def read_and_parse_header(
         header_already_parsed=None,
         header_already_readen=None
         ):
-    
     """
-    
+
     if header_already_readen and/or header_already_parsed defined, they
     should be results of wayround_org.http.message.read_header() and
     wayround_org.http.message.parse_header() respectively.
@@ -452,7 +451,7 @@ def read_and_parse_header(
 
     error = False
 
-    # NOTE: next line is for visual simmetry
+    # NOTE: this line is for visual simmetry
     if not error:
 
         if header_already_parsed is None:
@@ -471,6 +470,10 @@ def read_and_parse_header(
 
             else:
                 header_bytes, line_terminator = header_already_readen
+        else:
+            # TODO: probably this must be not (None, None), but
+            #       conditional values copy of header_already_readen
+            header_bytes, line_terminator = None, None
 
     if not error:
 
