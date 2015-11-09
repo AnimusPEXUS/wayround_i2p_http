@@ -3,6 +3,7 @@ import pprint
 import re
 import urllib.parse
 import http.client
+import logging
 
 
 HTTP_MESSAGE_REQUEST_REGEXP = re.compile(
@@ -19,7 +20,6 @@ class RequestLineDoesNotMatch(Exception):
 
 
 class HTTPRequest:
-
     """
     I'm preferring to use classes over dicts, cause classes are easier to debug
 
@@ -137,7 +137,15 @@ class HTTPResponse:
 
         return
 
-    def _format_response_header(self, encoding):
+    def format_status_line(self):
+        ret = format_status_line(
+            self.code,
+            self.reasonphrase,
+            self.httpversion
+            )
+        return ret
+
+    def format_header(self, encoding='utf-8'):
         """
         retruns bytes
         """
@@ -145,11 +153,7 @@ class HTTPResponse:
         ret = b''
 
         ret += bytes(
-            format_status_line(
-                self.code,
-                self.reasonphrase,
-                self.httpversion
-                ),
+            self.format_status_line(),
             encoding
             )
 
@@ -181,7 +185,7 @@ class HTTPResponse:
         output method
         """
 
-        header_bytes = self._format_response_header(encoding)
+        header_bytes = self.format_header(encoding)
 
         header_sent = False
 
@@ -189,7 +193,7 @@ class HTTPResponse:
 
             if not header_sent:
                 header_sent = True
-                self._send_header(sock, header_bytes, bs, stop_event)
+                self.send_header(sock, header_bytes, bs, stop_event)
 
             if stop_event is not None and stop_event.is_set():
                 break
@@ -199,19 +203,25 @@ class HTTPResponse:
                     i = str(i)
                 i = bytes(i, encoding=encoding)
 
-            self._send_iteration(sock, i, bs, stop_event)
+            self.send_iteration(sock, i, bs, stop_event)
 
         if not header_sent:
-            self._send_header(sock, header_bytes, bs, stop_event)
+            self.send_header(sock, header_bytes, bs, stop_event)
 
         return
 
-    def _send_header(self, sock, header_bytes, bs, stop_event=None):
-        self._send_iteration(sock, header_bytes, bs, stop_event)
-        self._send_iteration(sock, b'\r\n', bs, stop_event)
+    def send_header(self, sock, header_bytes, bs, stop_event=None):
+        """
+        usually you don't need to call this method manually
+        """
+        self.send_iteration(sock, header_bytes, bs, stop_event)
+        self.send_iteration(sock, b'\r\n', bs, stop_event)
         return
 
-    def _send_iteration(self, sock, data, bs, stop_event=None):
+    def send_iteration(self, sock, data, bs, stop_event=None):
+        """
+        usually you don't need to call this method manually
+        """
         if not isinstance(data, bytes):
             raise TypeError("`data' must be bytes")
 
@@ -240,6 +250,35 @@ class HTTPResponse:
         return
 
 
+class ClientHTTPRequest(HTTPResponse):
+
+    # NOTE: server response and client request are mostly the same
+
+    def __init__(
+            self,
+            method,
+            requesttarget,
+            header_fields,
+            iterable_body,
+            httpversion='HTTP/1.1'
+            ):
+        self.method = method
+        self.requesttarget = requesttarget
+        self.header_fields = header_fields
+        self.iterable_body = iterable_body
+        self.httpversion = httpversion
+        return
+
+    def format_status_line(self):
+        # NOTE: only this method actions is different
+        ret = client_format_status_line(
+            self.method,
+            self.requesttarget,
+            self.httpversion
+            )
+        return ret
+
+
 class HTTPError(HTTPResponse):
     """
     Truncated shortcut for HTTPResponse
@@ -259,21 +298,51 @@ class HTTPError(HTTPResponse):
         return
 
 
-def format_status(statuscode, reasonphrase=None):
+def format_status(statuscode, reasonphrase=None, encoding='utf-8'):
     statuscode = int(statuscode)
     if reasonphrase is None:
         reasonphrase = http.client.responses[statuscode]
+
+    if type(reasonphrase) == bytes:
+        reasonphrase = str(reasonphrase, encoding)
+
     return '{} {}'.format(statuscode, reasonphrase)
 
 
-def format_status_line(statuscode, reasonphrase=None, httpversion='HTTP/1.1'):
+def format_status_line(
+        statuscode,
+        reasonphrase=None,
+        httpversion='HTTP/1.1',
+        encoding='utf-8'
+        ):
     """
     No quoting done by this function
     """
-    return '{} {}'.format(
-        httpversion,
-        format_status(statuscode, reasonphrase)
-        )
+    if type(httpversion) == bytes:
+        httpversion = bytes(httpversion, encoding)
+
+    return '{} {}'.format(httpversion, format_status(statuscode, reasonphrase))
+
+
+def client_format_status_line(
+        method,
+        requesttarget,
+        httpversion='HTTP/1.1',
+        encoding='utf-8'
+        ):
+    """
+    No quoting done by this function
+    """
+    if type(method) == bytes:
+        method = str(method, encoding)
+
+    if type(requesttarget) == bytes:
+        requesttarget = str(requesttarget, encoding)
+
+    if type(httpversion) == bytes:
+        httpversion = str(httpversion, encoding)
+
+    return '{} {} {}'.format(method, requesttarget, httpversion)
 
 
 def determine_line_terminator(text):
@@ -304,7 +373,13 @@ def determine_line_terminator_in_stream(sock):
     line_terminator = None
 
     while True:
-        res = sock.recv(1)
+        while True:
+            try:
+                res = sock.recv(1)
+            except BlockingIOError:
+                pass
+            else:
+                break
 
         first_line_with_terminators += res
 
