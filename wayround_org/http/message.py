@@ -4,6 +4,7 @@ import re
 import urllib.parse
 import http.client
 import logging
+import ssl
 
 
 HTTP_MESSAGE_REQUEST_REGEXP = re.compile(
@@ -377,6 +378,10 @@ def determine_line_terminator_in_stream(sock):
             try:
                 res = sock.recv(1)
             except BlockingIOError:
+                pass
+            except ssl.SSLWantReadError:
+                pass
+            except ssl.SSLWantWriteError:
                 pass
             else:
                 break
