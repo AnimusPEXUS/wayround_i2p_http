@@ -5,6 +5,9 @@ import urllib.parse
 import http.client
 import logging
 import ssl
+import datetime
+
+import wayround_org.utils.socket
 
 
 HTTP_MESSAGE_REQUEST_REGEXP = re.compile(
@@ -17,6 +20,10 @@ class InputDataLimitReached(Exception):
 
 
 class RequestLineDoesNotMatch(Exception):
+    pass
+
+
+class MessageCantFindColumnInLine(Exception):
     pass
 
 
@@ -364,66 +371,131 @@ def determine_line_terminator(text):
     return ret
 
 
-def determine_line_terminator_in_stream(sock):
+def read_header_first_line(sock, limit=(1 * 1024 ** 2)):
     """
     Returns first line and it's terminator: tuple(terminator, bytes)
+
+    if resulted (None, None), then must be socket closed before all
+    first line was recived
     """
 
     first_line_with_terminators = b''
 
     line_terminator = None
 
+    ret = None, None
+
     while True:
-        while True:
-            try:
-                res = sock.recv(1)
-            except BlockingIOError:
-                pass
-            except ssl.SSLWantReadError:
-                pass
-            except ssl.SSLWantWriteError:
-                pass
-            else:
-                break
+        # print('read_header_first_line: {}'.format(datetime.datetime.utcnow()))
+        res = wayround_org.utils.socket.nb_recv(sock, bs=1)
+
+        '''
+        print(
+            'read_header_first_line: {}, res: {}'.format(
+                datetime.datetime.utcnow(),
+                res
+                )
+            )
+        '''
+
+        if len(res) == 0:
+            ret = None, None
+            break
 
         first_line_with_terminators += res
 
-        if res == b'\n':
+        '''
+        print(
+            'first_line_with_terminators == {}'.format(
+                first_line_with_terminators
+                )
+            )
+        '''
+
+        if len(first_line_with_terminators) > limit:
+            raise InputDataLimitReached("header exited size limit")
+
+        if first_line_with_terminators[-1] == 10:
+
             line_terminator = determine_line_terminator(
                 first_line_with_terminators
                 )
+
+            ret = line_terminator, first_line_with_terminators
             break
 
-    return line_terminator, first_line_with_terminators
+    # print('read_header_first_line ret: {}'.format(ret))
+
+    return ret
 
 
 def read_header(sock, limit=(1 * 1024 ** 2)):
+    """
+    if resulted (None, None), then must be socket closed before complete header
+    was recived
+    """
 
-    line_terminator, first_line = determine_line_terminator_in_stream(sock)
+    ret = None, None
 
-    header_bytes = first_line
+    line_terminator, first_line = read_header_first_line(sock)
+
+    if line_terminator is None or first_line is None:
+        pass
+
+    else:
+
+        header_bytes = first_line
+
+        while True:
+            # print('read_header: {}'.format(datetime.datetime.utcnow()))
+
+            res = wayround_org.utils.socket.nb_recv(sock, bs=1)
+
+            if len(res) == 0:
+                ret = None, None
+                break
+
+            header_bytes += res
+            if len(header_bytes) > limit:
+                raise InputDataLimitReached("header exited size limit")
+
+            if line_terminator == b'\n':
+                if header_bytes[-2:] == b'\n\n':
+                    break
+
+            elif line_terminator == b'\r\n':
+                if header_bytes[-4:] == b'\r\n\r\n':
+                    break
+
+            else:
+                raise Exception("programming error")
+
+            ret = header_bytes, line_terminator
+
+    # print('read_header ret: {}'.format(ret))
+
+    return ret
+
+
+def split_header_lines(bytes_data, line_terminator):
+    lines = []
+    line_terminator_len = len(line_terminator)
 
     while True:
-        res = sock.recv(1)
-        header_bytes += res
-        if len(header_bytes) > limit:
-            raise InputDataLimitReached("header exited size limit")
+        fr = bytes_data.find(line_terminator)
+        if fr == -1:
+            break
 
-        if line_terminator == b'\n':
-            if header_bytes[-2:] == b'\n\n':
-                break
+        lines.append(bytes_data[:fr])
 
-        elif line_terminator == b'\r\n':
-            if header_bytes[-4:] == b'\r\n\r\n':
-                break
+        bytes_data = bytes_data[fr + line_terminator_len:]
 
-        else:
-            raise Exception("programming error")
+    ret = lines
 
-    return header_bytes, line_terminator
+    return ret
 
 
-def parse_header(bites_data, line_terminator=b'\r\n'):
+def parse_header(bytes_data, line_terminator=b'\r\n'):
     """
     HTTP has no line lenght limitations in difference to email messages.
     HTTP also does not assume line wrappings, but this function will unwrap
@@ -437,10 +509,12 @@ def parse_header(bites_data, line_terminator=b'\r\n'):
         2, list of 2-tuples with bytes in them
     """
 
-    lines = bites_data.split(line_terminator)
+    lines = split_header_lines(bytes_data, line_terminator)
+
+    # print('bites_data: \n{}'.format(pprint.pformat(lines)))
 
     # this isn't needed anymore
-    del bites_data
+    del bytes_data
 
     if len(lines) == 0:
         raise RequestLineDoesNotMatch("Absent at all")
@@ -531,47 +605,48 @@ def read_and_parse_header(
 
     error = False
 
-    # NOTE: this line is for visual simmetry
-    if not error:
+    header_bytes, line_terminator = None, None
+    request_line_parsed, header_fields = None, None
 
-        if header_already_parsed is None:
-            if header_already_readen is None:
-
-                try:
-                    header_bytes, line_terminator = read_header(
-                        sock,
-                        limit
-                        )
-                except:
-                    logging.exception(
-                        "Error splitting HTTP header from the rest of the body"
-                        )
-                    error = True
-
-            else:
-                header_bytes, line_terminator = header_already_readen
-        else:
-            # TODO: probably this must be not (None, None), but
-            #       conditional values copy of header_already_readen
-            header_bytes, line_terminator = None, None
-
-    if not error:
-
-        if header_already_parsed is None:
+    if header_already_parsed is None:
+        if header_already_readen is None:
 
             try:
-                request_line_parsed, header_fields = parse_header(
-                    header_bytes,
-                    line_terminator
-                    )
+                header_bytes, line_terminator = read_header(sock, limit)
             except:
                 logging.exception(
-                    "Error parsing header. Maybe it's not an HTTP"
+                    "Error splitting HTTP header from the rest of the body"
                     )
                 error = True
 
         else:
-            request_line_parsed, header_fields = header_already_parsed
+            header_bytes, line_terminator = header_already_readen
+    else:
+        # TODO: probably this must be not (None, None), but conditional
+        #       values copy of header_already_readen
+        header_bytes, line_terminator = None, None
+
+    if not error:
+
+        if header_bytes is not None and line_terminator is not None:
+
+            if header_already_parsed is None:
+
+                try:
+                    request_line_parsed, header_fields = parse_header(
+                        header_bytes,
+                        line_terminator
+                        )
+                except:
+                    logging.exception(
+                        "Error parsing header. Maybe it's not an HTTP"
+                        )
+                    error = True
+
+            else:
+                request_line_parsed, header_fields = header_already_parsed
+        else:
+            error = True
 
     return (
         header_bytes,
