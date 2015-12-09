@@ -386,31 +386,13 @@ def read_header_first_line(sock, limit=(1 * 1024 ** 2)):
     ret = None, None
 
     while True:
-        # print('read_header_first_line: {}'.format(datetime.datetime.utcnow()))
         res = wayround_org.utils.socket.nb_recv(sock, bs=1)
-
-        '''
-        print(
-            'read_header_first_line: {}, res: {}'.format(
-                datetime.datetime.utcnow(),
-                res
-                )
-            )
-        '''
 
         if len(res) == 0:
             ret = None, None
             break
 
         first_line_with_terminators += res
-
-        '''
-        print(
-            'first_line_with_terminators == {}'.format(
-                first_line_with_terminators
-                )
-            )
-        '''
 
         if len(first_line_with_terminators) > limit:
             raise InputDataLimitReached("header exited size limit")
@@ -423,8 +405,6 @@ def read_header_first_line(sock, limit=(1 * 1024 ** 2)):
 
             ret = line_terminator, first_line_with_terminators
             break
-
-    # print('read_header_first_line ret: {}'.format(ret))
 
     return ret
 
@@ -447,7 +427,6 @@ def read_header(sock, limit=(1 * 1024 ** 2)):
         header_bytes = first_line
 
         while True:
-            # print('read_header: {}'.format(datetime.datetime.utcnow()))
 
             res = wayround_org.utils.socket.nb_recv(sock, bs=1)
 
@@ -472,12 +451,10 @@ def read_header(sock, limit=(1 * 1024 ** 2)):
 
             ret = header_bytes, line_terminator
 
-    # print('read_header ret: {}'.format(ret))
-
     return ret
 
 
-def split_header_lines(bytes_data, line_terminator):
+def split_lines(bytes_data, line_terminator):
     lines = []
     line_terminator_len = len(line_terminator)
 
@@ -509,7 +486,7 @@ def parse_header(bytes_data, line_terminator=b'\r\n'):
         2, list of 2-tuples with bytes in them
     """
 
-    lines = split_header_lines(bytes_data, line_terminator)
+    lines = split_lines(bytes_data, line_terminator)
 
     # print('bites_data: \n{}'.format(pprint.pformat(lines)))
 

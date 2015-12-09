@@ -55,6 +55,8 @@ class HTTPServer:
         simply passed to it
         """
 
+        sock.setblocking(False)
+
         (header_bytes, line_terminator,
             request_line_parsed, header_fields,
             error) = wayround_org.http.message.read_and_parse_header(
@@ -88,5 +90,7 @@ class HTTPServer:
                 sock,
                 encoding=self._output_into_socket_encoding
                 )
+
+            sock.close()
 
         return
