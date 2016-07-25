@@ -73,7 +73,7 @@ class HTTPRequest:
         return self.request_line_parsed['httpversion']
 
     def __repr__(self):
-        return pprint.pformat(
+        ret = pprint.pformat(
             {
                 'transaction_id': self.transaction_id,
                 'socket_server': self.socket_server,
@@ -84,6 +84,7 @@ class HTTPRequest:
                 'header_fields': self.header_fields
                 }
             )
+        return ret
 
     def get_decoded_request(self, encoding='utf-8'):
         """
@@ -632,3 +633,13 @@ def read_and_parse_header(
         header_fields,
         error
         )
+
+
+def normalize_header_field_name(value):
+    if type(value) != str:
+        raise TypeError("`value' must be string")
+    value = re.split(r'[-_]', value)
+    for i in range(len(value)):
+        value[i] = value[i].capitalize()
+    value = '-'.join(value)
+    return value
