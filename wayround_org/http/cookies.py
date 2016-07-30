@@ -2,6 +2,7 @@
 
 import http.cookies
 import regex
+import yaml
 
 import wayround_org.http.message
 import wayround_org.utils.domain
@@ -17,6 +18,12 @@ COOKIE_FIELD_NAMES = [
 def check_cookie_field_name(value, var_name):
     if value not in COOKIE_FIELD_NAMES:
         raise ValueError("invalid value of `{}'".format(var_name))
+    return
+
+
+def check_mode_value(value):
+    if value not in ['c2s', 's2c']:
+        raise ValueError("invalid mode value")
     return
 
 
@@ -81,12 +88,18 @@ COOKIE_VALUE_RE_T = "^{COOKIE_VALUE_RE}$".format(
 COOKIE_VALUE_RE_T_C = regex.compile(COOKIE_VALUE_RE_T)
 '''
 
-COOKIE_PAIR_RE = r'{cookie-name}\={cookie-value}'.format_map(
+COOKIE_PAIR_RE = r'({cookie-name})\=({cookie-value})'.format_map(
     {
         'cookie-name': COOKIE_NAME_RE,
         'cookie-value': COOKIE_VALUE_RE
         }
     )
+
+COOKIE_STRING_RE = r'({cookie-pair})(\; ({cookie-pair}))*'.format_map(
+    {'cookie-pair': COOKIE_PAIR_RE}
+    )
+
+# COOKIE_STRING_RE_C = regex.compile(COOKIE_STRING_RE)
 
 EXPIRES_AV_RE = r'Expires\=({sane-cookie-date})'.format_map(
     {
@@ -102,7 +115,7 @@ MAX_AGE_AV_RE = r'Max-Age=({MAX_AGE_VALUE_RE})'.format(
     MAX_AGE_VALUE_RE=MAX_AGE_VALUE_RE
     )
 
-DOMAIN_AV_RE = r'Domain=({DOMAIN_RE})'.format(
+DOMAIN_AV_RE = r'Domain=\.?({DOMAIN_RE})'.format(
     DOMAIN_RE=wayround_org.utils.domain.DOMAIN_RE
     )
 
@@ -154,7 +167,97 @@ ATTRIBUTE_NAMES_RE_C = regex.compile(
     )
 
 
-def parse_cookie_string(data):
+def parse_cookie_string_c2s(data):
+
+    data = data.lstrip()
+
+    ended = len(data) == 0
+    error = False
+
+    ret = []
+
+    if ended:
+        error = True
+
+    if not ended and not error:
+
+        while True:
+
+            name = None
+            value = None
+
+            re_res = COOKIE_NAME_RE_C.match(data)
+
+            if re_res is None:
+                error = True
+            else:
+
+                name = data[re_res.start():re_res.end()]
+                data = data[re_res.end():]
+
+            if not ended and not error:
+                if len(data) == 0:
+                    ended = True
+                    error = True
+
+            if ended or error:
+                break
+
+            if not ended and not error:
+                if data[0] == '=':
+                    data = data[1:]
+                else:
+                    error = True
+
+            if not ended and not error:
+                if len(data) == 0:
+                    ended = True
+                    error = False
+
+            if ended or error:
+                break
+
+            re_res = COOKIE_VALUE_RE_C.match(data)
+
+            if re_res is None or (re_res.end() == re_res.start()):
+                error = True
+            else:
+                value = data[re_res.start():re_res.end()]
+                if (
+                        len(value) > 1
+                        and value[0].startswith('"')
+                        and value[-1].endswith('"')
+                        ):
+                    value = value[1:-1]
+                data = data[re_res.end():]
+
+            ret.append((name, value))
+
+            if ended or error:
+                break
+
+            if not ended and not error:
+                if len(data) == 0:
+                    ended = True
+                    error = False
+
+            if ended or error:
+                break
+
+            if not data.startswith('; '):
+                error = True
+
+            if ended or error:
+                break
+
+            data = data[2:]
+
+    return ret, error
+
+
+def parse_cookie_string_s2c(data):
+
+    data = data.lstrip()
 
     ended = len(data) == 0
     error = False
@@ -172,37 +275,25 @@ def parse_cookie_string(data):
 
     if not ended and not error:
 
-        data = data.lstrip()
-        print('data 1: {}'.format(data))
         re_res = COOKIE_NAME_RE_C.match(data)
 
         if re_res is None:
-            print('error 1')
             error = True
         else:
-
-            print(
-                're_res name: start {}, end {}'.format(
-                    re_res.start(),
-                    re_res.end()))
 
             ret['name'] = data[re_res.start():re_res.end()]
 
             data = data[re_res.end():]
-            print('data 2: {}'.format(data))
 
     if not ended and not error:
         if len(data) == 0:
-            print('error 2')
             ended = True
             error = True
 
     if not ended and not error:
         if data[0] == '=':
             data = data[1:]
-            print('data 3: {}'.format(data))
         else:
-            print('error 2.5')
             error = True
 
     if not ended and not error:
@@ -212,10 +303,8 @@ def parse_cookie_string(data):
 
     if not ended and not error:
         re_res = COOKIE_VALUE_RE_C.match(data)
-        print('re_res value: {}'.format(re_res))
 
         if re_res is None or (re_res.end() == re_res.start()):
-            print('error 3.5')
             error = True
         else:
             ret['value'] = data[re_res.start():re_res.end()]
@@ -226,7 +315,6 @@ def parse_cookie_string(data):
                     ):
                 ret['value'] = ret['value'][1:-1]
             data = data[re_res.end():]
-            print('data 4: {}'.format(data))
 
     if not ended and not error:
         if len(data) == 0:
@@ -238,11 +326,9 @@ def parse_cookie_string(data):
 
             if data.startswith('; '):
                 data = data[2:]
-                print('data 5: {}'.format(data))
 
             else:
                 ended = False
-                print('error 5')
                 error = True
 
             if error:
@@ -252,7 +338,6 @@ def parse_cookie_string(data):
 
             if re_res is None:
                 ended = False
-                print('error 6')
                 error = True
 
             if error:
@@ -261,9 +346,6 @@ def parse_cookie_string(data):
             re_res_attr_name = data[re_res.start():re_res.end()]
 
             data = data[re_res.end():]
-            print('data 6: {}'.format(data))
-
-            print('re_res_attr_name: {}'.format(re_res_attr_name))
 
             if re_res_attr_name == 'Expires=':
                 re_res  = wayround_org.utils.datetime_rfc5322.\
@@ -273,12 +355,10 @@ def parse_cookie_string(data):
 
                 if re_res is None:
                     error = True
-                    print('error 7')
                     break
 
                 _t = data[re_res.start():re_res.end()]
                 data = data[re_res.end():]
-                print('error 7')
                 ret['expires'] =  wayround_org.utils.datetime_rfc5322.\
                     str_to_datetime(
                         None,
@@ -291,21 +371,22 @@ def parse_cookie_string(data):
                 re_res = MAX_AGE_VALUE_RE_C.match(data)
                 if re_res is None:
                     error = True
-                    print('error 8')
                     break
 
                 ret['max-age'] = int(data[re_res.start():re_res.end()])
                 data = data[re_res.end():]
-                print('error 8')
 
             elif re_res_attr_name == 'Domain=':
+                ret['domain'] = ''
+                if data.startswith('.'):
+                    ret['domain'] += '.'
+                    data = data[1:]
                 re_res = wayround_org.utils.domain.DOMAIN_RE_C.match(data)
                 if re_res is None:
                     error = True
-                    print('error 9')
                     break
 
-                ret['domain'] = data[re_res.start():re_res.end()]
+                ret['domain'] += data[re_res.start():re_res.end()]
                 data = data[re_res.end():]
                 print('error 9')
 
@@ -313,12 +394,10 @@ def parse_cookie_string(data):
                 re_res = PATH_VALUE_RE_C.match(data)
                 if re_res is None:
                     error = True
-                    print('error 10')
                     break
 
                 ret['path'] = data[re_res.start():re_res.end()]
                 data = data[re_res.end():]
-                print('error 10')
 
             elif re_res_attr_name == 'Secure':
                 ret['secure'] = True
@@ -337,67 +416,99 @@ def parse_cookie_string(data):
     return ret, error
 
 
+class CookieInvalidValue(Exception):
+    pass
+
+
+class CookieInvalidC2SString(Exception):
+    pass
+
+
 class Cookie:
 
-    """
-    This is https://tools.ietf.org/html/rfc2109.html implimentation
-    as http.cookies.Morsel is fuckin shit by state on
-    Thu Jul 21 10:31:19 MSK 2016
-    """
-
     @classmethod
-    def new_from_text(cls, text):
-        if not isinstance(text, str):
-            raise TypeError("`text' must be of inst of str")
-        res, error = parse_cookie_string(text)
-        ret = None
-        if not error:
-            ret = cls(
-                name=res['name'],
-                value=res['value'],
-                expires=res['expires'],
-                max_age=res['max-age'],
-                domain=res['domain'],
-                path=res['path'],
-                secure=res['secure'],
-                httponly=res['httponly']
-                )
+    def new_from_tuple(cls, value):
+        if not isinstance(value, tuple):
+            raise TypeError("`value' must be inst of tuple")
+
+        try:
+            ret = cls(*value)
+        except CookieInvalidValue:
+            ret = None
 
         return ret
 
     @classmethod
-    def new_from_dict(cls, d):
+    def new_from_str_c2s(cls, value):
+        """
+        WARNING: this method assumes there is axactly one cookie name-value
+                 pair in string, else exception will be raised
+        """
 
-        ret = cls(
-            name=d['name'],
-            value=d['value'],
-            expires=d['expires'],
-            max_age=d['max-age'],
-            domain=d['domain'],
-            path=d['path'],
-            secure=d['secure'],
-            httponly=d['httponly']
+        if not isinstance(value, str):
+            raise TypeError("`value' must be inst of str")
+
+        res, error = parse_cookie_string_c2s(text)
+
+        ret = None
+        if not error:
+
+            if len(res) != 1:
+                raise CookieInvalidC2SString(
+                    "invalid value. key-value pair is not single"
+                    )
+
+            ret = cls.new_from_tuple((res[0][0], res[0][1]))
+
+        return ret
+
+    @classmethod
+    def new_from_dict(cls, value):
+
+        ret = cls.new_from_tuple(
+            value.get('name', None),
+            value.get('value', None),
+            value.get('expires', None),
+            value.get('max-age', None),
+            value.get('domain', None),
+            value.get('path', None),
+            value.get('secure', None),
+            value.get('httponly', None)
             )
 
         return ret
 
     @classmethod
-    def new_from_morsel(cls, python_morsel):
+    def new_from_str_s2c(cls, value):
 
-        if not isinstance(python_morsel, http.cookies.Morsel):
+        if not isinstance(value, str):
+            raise TypeError("`value' must be inst of str")
+
+        value, error = parse_cookie_string_s2c(value)
+
+        ret = None
+        if not error:
+            ret = cls.new_from_dict(value)
+
+        return ret
+
+    @classmethod
+    def new_from_morsel(cls, value):
+
+        if not isinstance(value, http.cookies.Morsel):
             raise TypeError(
-                "`python_morsel' must be of inst of http.cookies.Morsel"
+                "`value' must be of inst of http.cookies.Morsel"
                 )
 
-        ret = cls(
-            name=python_morsel.name,
-            value=python_morsel.value,
-            expires=python_morsel['expires'],
-            max_age=python_morsel['max-age'],
-            domain=python_morsel['domain'],
-            path=python_morsel['path'],
-            secure=python_morsel['secure'],
-            httponly=python_morsel['httponly']
+        ret = cls.new_from_tuple(
+            value.name,
+            value.value,
+            value['expires'],
+            value['max-age'],
+            value['domain'],
+            value['path'],
+            value['secure'],
+            value['httponly']
             )
 
         return ret
@@ -433,8 +544,10 @@ class Cookie:
         self.httponly = httponly
         return
 
-    def render(self, field_name=None):
+    def render(self, field_name=None, mode='s2c'):
         ret = ''
+
+        check_mode_value(mode)
 
         if field_name is not None:
             check_cookie_field_name(field_name)
@@ -446,27 +559,29 @@ class Cookie:
 
         ret += '{}={}'.format(self.key, self.value)
 
-        if self.expires is not None:
-            ret += '; Expires={}'.format(
-                wayround_org.utils.datetime_rfc5322.datetime_to_str(
-                    self.expires
+        if mode == 's2c':
+
+            if self.expires is not None:
+                ret += '; Expires={}'.format(
+                    wayround_org.utils.datetime_rfc5322.datetime_to_str(
+                        self.expires
+                        )
                     )
-                )
 
-        if self.max_age is not None:
-            ret += '; Max-Age={}'.format(self.max_age)
+            if self.max_age is not None:
+                ret += '; Max-Age={}'.format(self.max_age)
 
-        if self.domain is not None:
-            ret += '; Domain={}'.format(self.domain)
+            if self.domain is not None:
+                ret += '; Domain={}'.format(self.domain)
 
-        if self.path is not None:
-            ret += '; Path={}'.format(self.path)
+            if self.path is not None:
+                ret += '; Path={}'.format(self.path)
 
-        if self.secure is not None and self.secure == True:
-            ret += '; Secure'
+            if self.secure is not None and self.secure == True:
+                ret += '; Secure'
 
-        if self.httponly is not None and self.httponly == True:
-            ret += '; HttpOnly'
+            if self.httponly is not None and self.httponly == True:
+                ret += '; HttpOnly'
 
         return ret
 
@@ -493,19 +608,7 @@ class Cookie:
             raise TypeError("`value' value must be of str type")
         for i in value:
             if not COOKIE_OCTET_RE_C.match(i):
-                raise ValueError("supplied cookie value is unsafe")
-        self._value = value
-        return
-
-    @property
-    def value(self):
-        ret = self._value
-        return ret
-
-    @value.setter
-    def value(self, value):
-        if type(value) != str:
-            raise TypeError("`value' value must be of str type")
+                raise CookieInvalidValue("supplied cookie value is unsafe")
         self._value = value
         return
 
@@ -570,15 +673,92 @@ class Cookie:
         return
 
 
+class CookieSafe(Cookie):
+
+    @property
+    def value(self):
+        ret = super().value
+
+        ret = bytes(ret, 'utf-8')
+        ret = base64.b64decode(ret)
+        ret = str(ret, 'utf-8')
+        ret = yaml.load(ret)
+
+        return ret
+
+    @value.setter
+    def value(self, value):
+        if type(value) != str:
+            raise TypeError("`value' value must be of str type")
+
+        value = yaml.dump(value)
+        value = bytes(value, 'utf-8')
+        value = base64.b64encode(value)
+        value = str(value, 'utf-8')
+
+        super().value = value
+        return
+
+
 class Cookies:
+
+    @staticmethod
+    def _Cookie():
+        return Cookie
+
+    @classmethod
+    def new_from_str_s2c(cls, value):
+        ret = cls()
+        if not ret.add_from_str_s2c(value):
+            ret = None
+        return ret
+
+    @classmethod
+    def new_from_str_c2s(cls, value):
+        ret = cls()
+        if not ret.add_from_str_c2s(value):
+            ret = None
+        return ret
+
+    @classmethod
+    def new_from_morsel(cls, value):
+        ret = cls()
+        if not ret.add_from_morsel(value):
+            ret = None
+        return ret
+
+    @classmethod
+    def new_from_dict(cls, value):
+        ret = cls()
+        if not ret.add_from_dict(value):
+            ret = None
+        return ret
+
+    @classmethod
+    def new_from_reqres(cls, value, src_field_name='Cookie'):
+        ret = cls()
+        if not ret.add_from_reqres(value, src_field_name=src_field_name):
+            ret = None
+        return ret
+
+    @classmethod
+    def new_from_wsgi_request(cls, value):
+        ret = cls()
+        if not ret.add_from_wsgi_request(value):
+            ret = None
+        return ret
 
     def __init__(self):
         self._cookies_dict = {}
         return
 
-    def __getitem__(self, name):
-        ret = self._cookies_dict['name']
+    def __getitem__(self, value):
+        ret = self._cookies_dict[value]
         return ret
+
+    def __delitem__(self, value):
+        del self._cookies_dict[value]
+        return
 
     def __len__(self):
         return len(self._cookies_dict)
@@ -586,39 +766,97 @@ class Cookies:
     def __contains__(self, key):
         return key in self._cookies_dict
 
-    def add(self, cookie):
-        if not isinstance(cookie, Cookie):
-            raise TypeError("`cookie' must be inst of Cookie")
-        self._cookies_dict[cookie.name] = cookie
+    def add(self, value):
+        if type(value) != self._Cookie:
+            raise TypeError(
+                "`value' must be of type {}".format(self._Cookie)
+                )
+        self._cookies_dict[value.name] = value
         return
 
-    def add_from_str(self, txt):
-        res = Cookie.new_from_text(text)
-        ret = 1
+    def del(self, name):
+        self.add(self._Cookie(name, ''))
+        return
+
+    def add_from_str_s2c(self, value):
+        res = self._Cookie.new_from_str_s2c(value)
+        ret = False
         if res is not None:
             self.add(res)
-            ret = 0
+            ret = True
+        return ret
+
+    def add_from_str_c2s(self, value):
+        res, error = parse_cookie_string_c2s(value)
+        ret = False
+        if not error:
+
+            for i in res:
+                res2 = self._Cookie.new_from_tuple(i)
+                if res2 is None
+                    break
+                self.add(res2)
+
+            ret = True
+
         return ret
 
     def add_from_morsel(self, python_morsel):
-        res = Cookie.new_from_morsel(python_morsel)
-        ret = 1
+        res = self._Cookie.new_from_morsel(python_morsel)
+        ret = False
         if res is not None:
             self.add(res)
-            ret = 0
+            ret = True
         return ret
 
     def add_from_dict(self, d):
-        res = Cookie.new_from_dict(d)
-        ret = 1
+        res = self._Cookie.new_from_dict(d)
+        ret = False
         if res is not None:
             self.add(res)
-            ret = 0
+            ret = True
         return ret
 
-    def add_from_reqres(self, obj, src_field_name='Set-Cookie'):
+    def add_from_tuple_list(self, obj, mode='c2s',
+                            src_field_name='Cookie'):
+
+        ret = False
+        error = False
+
+        check_mode_value(mode)
 
         check_cookie_field_name(src_field_name, 'src_field_name')
+
+        for i in range(len(obj) - 1, -1, -1):
+
+            header_field = obj[i]
+            header_field_name =
+                wayround_org.http.message.normalize_header_field_name(
+                    header_field[0]
+                    )
+
+            if header_field_name == src_field_name:
+                if mode == 'c2s':
+                    if not self.add_from_str_c2s(header_field[1]):
+                        error = True
+                        break
+                else:
+                    if not self.add_from_str_s2c(header_field[1]):
+                        error = True
+                        break
+
+        else:
+            raise TypeError("invalid `obj' type")
+
+        if error:
+            ret = False
+
+        return ret
+
+    def add_from_reqres(self, obj, mode='c2s', src_field_name='Cookie'):
+
+        ret = False
+        error = False
 
         type_obj = type(obj)
 
@@ -626,23 +864,21 @@ class Cookies:
                 wayround_org.http.message.HTTPRequest,
                 wayround_org.http.message.HTTPResponse
                 ]:
-            for i in range(len(obj.header_fields) - 1, -1, -1):
-
-                header_field = obj.header_fields[i]
-                header_field_name = \
-                    wayround_org.http.message.normalize_header_field_name(
-                        header_field[0]
-                        )
-
-                if header_field_name == src_field_name:
-                    self.add_from_text(header_field[1])
+            ret = self.add_from_tuple_list(
+                obj,
+                mode=mode,
+                src_field_name=src_field_name
+                )
 
         else:
             raise TypeError("invalid `obj' type")
 
-        return 
-        
-    def put_cookies_into_reqres(self, obj, tgt_header_name='Cookie'):
+        if error:
+            ret = False
+
+        return ret
+
+    def put_cookies_into_tuple_list(self, obj, tgt_header_name='Set-Cookie'):
 
         check_cookie_field_name(tgt_header_name, 'tgt_header_name')
 
@@ -662,6 +898,47 @@ class Cookies:
                 )
 
         return
+
+    def put_cookies_into_reqres(self, obj, tgt_header_name='Set-Cookie'):
+
+        check_cookie_field_name(tgt_header_name, 'tgt_header_name')
+
+        if type(obj) not in [
+                wayround_org.http.message.HTTPRequest,
+                wayround_org.http.message.HTTPResponse
+                ]:
+            raise TypeError("Invalid type of `obj'")
+
+        for i in reversed(sorted(list(self._cookies_dict.keys()))):
+            obj.header_fields.insert(
+                0,
+                (
+                    tgt_header_name,
+                    self._cookies_dict[i].render()
+                    )
+                )
+
+        return
+
+    def add_from_wsgi_request(self, wsgi_request):
+
+        ret = False
+
+        if not 'HTTP_COOKIE' in wsgi_request:
+            ret = True
+
+        else:
+
+            ret = self.add_from_str_c2s(wsgi_request['HTTP_COOKIE'])
+
+        return ret
+
+
+class CookiesSafe:
+
+    @staticmethod
+    def _Cookie():
+        return CookieSafe
 
 
 def parser_test():
