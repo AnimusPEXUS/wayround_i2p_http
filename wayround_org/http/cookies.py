@@ -1118,12 +1118,13 @@ def parser_test():
         print('{}{}'.format('    ', i))
         res, error = parse_cookie_string_s2c(i)
         print('{}error: {}'.format(' ' * 4 * 2, error))
-        if True:  # not error:
-            for j in [
-                    'name', 'value', 'expires', 'max-age',
-                    'domain', 'path', 'secure', 'httponly'
-                    ]:
-                print('{}{:10}:{:>20}'.format(' ' * 4 * 3, j, str(res[j])))
+
+        for j in [
+                'name', 'value', 'expires', 'max-age',
+                'domain', 'path', 'secure', 'httponly'
+                ]:
+            print('{}{:10}:{:>20}'.format(' ' * 4 * 3, j, str(res[j])))
+
         if not error:
             print("rendered: {}".format(Cookie.new_from_dict(res).render()))
         print('-' * 79)
