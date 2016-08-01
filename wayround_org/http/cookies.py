@@ -1,8 +1,11 @@
 
 
+import copy
 import http.cookies
 import regex
 import yaml
+import base64
+import datetime
 
 import wayround_org.http.message
 import wayround_org.utils.domain
@@ -23,6 +26,12 @@ def check_cookie_field_name(value, var_name):
 
 def check_mode_value(value):
     if value not in ['c2s', 's2c']:
+        raise ValueError("invalid mode value")
+    return
+
+
+def check_add_method(value):
+    if value not in ['append', 'prepend']:
         raise ValueError("invalid mode value")
     return
 
@@ -64,14 +73,6 @@ COOKIE_NAME_RE_C = regex.compile(COOKIE_NAME_RE)
 COOKIE_OCTET_RE = r'(\x21|[\x23-\x2B]|[\x2D-\x3A]|[\x3C-\x5B]|[\x5D-\x7E])'
 COOKIE_OCTET_RE_C = regex.compile(COOKIE_OCTET_RE)
 
-'''
-COOKIE_VALUE_RE = r'((\"({cookie-octet})*\")|(({cookie-octet})*))'.format_map(
-    {
-        'cookie-octet': COOKIE_OCTET_RE
-        }
-    )
-'''
-
 COOKIE_VALUE_RE = r'(?P<dquote>\"?)({cookie-octet})*(?P=dquote)'.format_map(
     {
         'cookie-octet': COOKIE_OCTET_RE
@@ -79,14 +80,6 @@ COOKIE_VALUE_RE = r'(?P<dquote>\"?)({cookie-octet})*(?P=dquote)'.format_map(
     )
 
 COOKIE_VALUE_RE_C = regex.compile(COOKIE_VALUE_RE)
-
-'''
-COOKIE_VALUE_RE_T = "^{COOKIE_VALUE_RE}$".format(
-    COOKIE_VALUE_RE=COOKIE_VALUE_RE
-    )
-
-COOKIE_VALUE_RE_T_C = regex.compile(COOKIE_VALUE_RE_T)
-'''
 
 COOKIE_PAIR_RE = r'({cookie-name})\=({cookie-value})'.format_map(
     {
@@ -99,9 +92,7 @@ COOKIE_STRING_RE = r'({cookie-pair})(\; ({cookie-pair}))*'.format_map(
     {'cookie-pair': COOKIE_PAIR_RE}
     )
 
-# COOKIE_STRING_RE_C = regex.compile(COOKIE_STRING_RE)
-
-EXPIRES_AV_RE = r'Expires\=({sane-cookie-date})'.format_map(
+EXPIRES_AV_RE = r'Expires=({sane-cookie-date})'.format_map(
     {
         'sane-cookie-date': wayround_org.utils.datetime_rfc5322.
         DATETIME_EXPRESSION
@@ -115,8 +106,8 @@ MAX_AGE_AV_RE = r'Max-Age=({MAX_AGE_VALUE_RE})'.format(
     MAX_AGE_VALUE_RE=MAX_AGE_VALUE_RE
     )
 
-DOMAIN_AV_RE = r'Domain=\.?({DOMAIN_RE})'.format(
-    DOMAIN_RE=wayround_org.utils.domain.DOMAIN_RE
+DOMAIN_AV_RE = r'Domain=\.?({domain})'.format(
+    domain=wayround_org.utils.domain.DOMAIN_RE
     )
 
 PATH_VALUE_RE = r'(.*)(?<!.*(({CTL_RE}|\;).*))'.format(CTL_RE=CTL_RE)
@@ -310,8 +301,8 @@ def parse_cookie_string_s2c(data):
             ret['value'] = data[re_res.start():re_res.end()]
             if (
                     len(ret['value']) > 1
-                    and ret['value'][0] == '"'
-                    and ret['value'][-1] == '"'
+                    and ret['value'].startswith('"')
+                    and ret['value'].endswith('"')
                     ):
                 ret['value'] = ret['value'][1:-1]
             data = data[re_res.end():]
@@ -428,6 +419,7 @@ class Cookie:
 
     @classmethod
     def new_from_tuple(cls, value):
+
         if not isinstance(value, tuple):
             raise TypeError("`value' must be inst of tuple")
 
@@ -448,7 +440,7 @@ class Cookie:
         if not isinstance(value, str):
             raise TypeError("`value' must be inst of str")
 
-        res, error = parse_cookie_string_c2s(text)
+        res, error = parse_cookie_string_c2s(value)
 
         ret = None
         if not error:
@@ -544,20 +536,35 @@ class Cookie:
         self.httponly = httponly
         return
 
-    def render(self, field_name=None, mode='s2c'):
+    def copy(self):
+        ret = type(self).new_from_tuple(
+            self.name,
+            self.value,
+            # TODO: datetime has no __copy__ method.
+            #        need to somehow insure in copy safety
+            copy.deepcopy(self.expires),
+            self.max_age,
+            self.domain,
+            self.path,
+            self.secure,
+            self.httponly,
+            )
+        return ret
+
+    def render_str(self, field_name=None, mode='s2c'):
         ret = ''
 
         check_mode_value(mode)
 
         if field_name is not None:
-            check_cookie_field_name(field_name)
+            check_cookie_field_name(field_name, 'field_name')
 
             ret += '{}: '.format(field_name)
 
         if len(ret) != 0:
             ret += ' '
 
-        ret += '{}={}'.format(self.key, self.value)
+        ret += '{}={}'.format(self.name, self.value)
 
         if mode == 's2c':
 
@@ -582,6 +589,28 @@ class Cookie:
 
             if self.httponly is not None and self.httponly == True:
                 ret += '; HttpOnly'
+
+        return ret
+
+    def render_tuple(self, mode='s2c'):
+        ret = []
+
+        check_mode_value(mode)
+
+        ret.append(self.name)
+        ret.append(self.value)
+
+        if mode == 's2c':
+
+            ret.append(self.expires)
+            ret.append(self.max_age)
+            ret.append(self.domain)
+            ret.append(self.path)
+            ret.append(self.secure)
+            ret.append(self.httponly)
+
+        if isinstance(ret, list):
+            ret = tuple(ret)
 
         return ret
 
@@ -619,7 +648,7 @@ class Cookie:
 
     @expires.setter
     def expores(self, value):
-        if value is not None and not isinstance(value, datetime.DateTime):
+        if value is not None and not isinstance(value, datetime.datetime):
             raise TypeError("`expires' must be None or DateTime")
         self._expires = value
         return
@@ -631,7 +660,7 @@ class Cookie:
 
     @max_age.setter
     def max_age(self, value):
-        if value is not None and not isinstance(value, datetime.DateTime):
+        if value is not None and not isinstance(value, datetime.datetime):
             raise TypeError("`max_age' must be None or DateTime")
         self._max_age = value
         return
@@ -673,37 +702,10 @@ class Cookie:
         return
 
 
-class CookieSafe(Cookie):
-
-    @property
-    def value(self):
-        ret = super().value
-
-        ret = bytes(ret, 'utf-8')
-        ret = base64.b64decode(ret)
-        ret = str(ret, 'utf-8')
-        ret = yaml.load(ret)
-
-        return ret
-
-    @value.setter
-    def value(self, value):
-        if type(value) != str:
-            raise TypeError("`value' value must be of str type")
-
-        value = yaml.dump(value)
-        value = bytes(value, 'utf-8')
-        value = base64.b64encode(value)
-        value = str(value, 'utf-8')
-
-        super().value = value
-        return
-
-
 class Cookies:
 
     @staticmethod
-    def _Cookie():
+    def cookie_class():
         return Cookie
 
     @classmethod
@@ -748,6 +750,13 @@ class Cookies:
             ret = None
         return ret
 
+    @classmethod
+    def new_from_cookies(cls, value):
+        ret = cls()
+        if not ret.add_from_cookies(value):
+            ret = None
+        return ret
+
     def __init__(self):
         self._cookies_dict = {}
         return
@@ -766,20 +775,51 @@ class Cookies:
     def __contains__(self, key):
         return key in self._cookies_dict
 
+    def __iter__(self):
+        return iter(self._cookies_dict)
+
+    def keys(self):
+        return self._cookies_dict.keys()
+
+    def render_tuple_list(self, mode='s2c'):
+        check_mode_value(mode)
+        ret = []
+        for i in sorted(list(self.keys())):
+            ret.append(i.render_tuple(mode='s2c'))
+        return ret
+
+    def render_field_tuple_list(self, mode='s2c', field_name='Set-Cookie'):
+        check_field_name(field_name)
+        check_mode_value(mode)
+
+        for i in sorted(list(self.keys())):
+            ret.append((field_name, i.render_str(mode=mode)))
+
+        return ret
+
+    def copy(self):
+        ret = type(self).new_from_cookies(self)
+        return ret
+
     def add(self, value):
-        if type(value) != self._Cookie:
+        if type(value) != self.cookie_class:
             raise TypeError(
-                "`value' must be of type {}".format(self._Cookie)
+                "`value' must be of type {}".format(self.cookie_class)
                 )
         self._cookies_dict[value.name] = value
         return
 
-    def del(self, name):
-        self.add(self._Cookie(name, ''))
+    def remove(self, name):
+        """
+        This method is not for removing Cookie from Cookies
+        (for this use ``del cookies[name]``). This method is for removing
+        cookie from cookie client.
+        """
+        self.add(self.cookie_class(name, ''))
         return
 
     def add_from_str_s2c(self, value):
-        res = self._Cookie.new_from_str_s2c(value)
+        res = self.cookie_class.new_from_str_s2c(value)
         ret = False
         if res is not None:
             self.add(res)
@@ -792,8 +832,8 @@ class Cookies:
         if not error:
 
             for i in res:
-                res2 = self._Cookie.new_from_tuple(i)
-                if res2 is None
+                res2 = self.cookie_class.new_from_tuple(i)
+                if res2 is None:
                     break
                 self.add(res2)
 
@@ -802,7 +842,7 @@ class Cookies:
         return ret
 
     def add_from_morsel(self, python_morsel):
-        res = self._Cookie.new_from_morsel(python_morsel)
+        res = self.cookie_class.new_from_morsel(python_morsel)
         ret = False
         if res is not None:
             self.add(res)
@@ -810,15 +850,19 @@ class Cookies:
         return ret
 
     def add_from_dict(self, d):
-        res = self._Cookie.new_from_dict(d)
+        res = self.cookie_class.new_from_dict(d)
         ret = False
         if res is not None:
             self.add(res)
             ret = True
         return ret
 
-    def add_from_tuple_list(self, obj, mode='c2s',
-                            src_field_name='Cookie'):
+    def add_from_field_tuple_list(
+            self,
+            obj,
+            mode='c2s',
+            src_field_name='Cookie'
+            ):
 
         ret = False
         error = False
@@ -830,7 +874,7 @@ class Cookies:
         for i in range(len(obj) - 1, -1, -1):
 
             header_field = obj[i]
-            header_field_name =
+            header_field_name = \
                 wayround_org.http.message.normalize_header_field_name(
                     header_field[0]
                     )
@@ -864,7 +908,7 @@ class Cookies:
                 wayround_org.http.message.HTTPRequest,
                 wayround_org.http.message.HTTPResponse
                 ]:
-            ret = self.add_from_tuple_list(
+            ret = self.add_from_field_tuple_list(
                 obj,
                 mode=mode,
                 src_field_name=src_field_name
@@ -877,48 +921,6 @@ class Cookies:
             ret = False
 
         return ret
-
-    def put_cookies_into_tuple_list(self, obj, tgt_header_name='Set-Cookie'):
-
-        check_cookie_field_name(tgt_header_name, 'tgt_header_name')
-
-        if type(obj) not in [
-                wayround_org.http.message.HTTPRequest,
-                wayround_org.http.message.HTTPResponse
-                ]:
-            raise TypeError("Invalid type of `obj'")
-
-        for i in reversed(sorted(list(self._cookies_dict.keys()))):
-            obj.header_fields.insert(
-                0,
-                (
-                    tgt_header_name,
-                    self._cookies_dict[i].render()
-                    )
-                )
-
-        return
-
-    def put_cookies_into_reqres(self, obj, tgt_header_name='Set-Cookie'):
-
-        check_cookie_field_name(tgt_header_name, 'tgt_header_name')
-
-        if type(obj) not in [
-                wayround_org.http.message.HTTPRequest,
-                wayround_org.http.message.HTTPResponse
-                ]:
-            raise TypeError("Invalid type of `obj'")
-
-        for i in reversed(sorted(list(self._cookies_dict.keys()))):
-            obj.header_fields.insert(
-                0,
-                (
-                    tgt_header_name,
-                    self._cookies_dict[i].render()
-                    )
-                )
-
-        return
 
     def add_from_wsgi_request(self, wsgi_request):
 
@@ -933,12 +935,175 @@ class Cookies:
 
         return ret
 
+    def add_from_cookies(self, value):
+        """
+        Complete cookie copies are created, not just links
+        """
+        ret = False
 
-class CookiesSafe:
+        type_self = type(self)
+
+        if type(value) != type_self:
+            raise TypeError("`value' must be of type {}".format(type_self))
+
+        for i in value:
+            self.add(value[i].copy())
+
+        return ret
+
+    def add_to_tuple_list(
+            self,
+            obj,
+            mode='s2c',
+            field_name=None,
+            method='append'
+            ):
+
+        check_mode_value(mode)
+        check_add_method(method)
+
+        if not isinstance(obj, list):
+            raise TypeError("`obj' must be list")
+
+        if fielded_name is not None:
+            check_field_name(field_name)
+
+        if fielded_name is not None:
+            tl = self.render_field_tuple_list(
+                mode=mode,
+                field_name=field_name
+                )
+        else:
+            tl = self.render_tuple_list(mode=mode)
+
+        for i in tl:
+            if mode == 'append':
+                obj.append(i)
+            elif mode == 'prepend':
+                obj.insert(0, i)
+            else:
+                raise Exception("programming error")
+
+        return
+
+    def append_to_s2c_tuple_list(self, obj):
+        ret = self.add_to_tuple_list(obj, method='append', mode='s2c')
+        return ret
+
+    def append_to_c2s_tuple_list(self, obj):
+        ret = self.add_to_tuple_list(obj, method='append', mode='c2s')
+        return ret
+
+    def prepend_to_s2c_tuple_list(self, obj):
+        ret = self.add_to_tuple_list(obj, method='prepend', mode='s2c')
+        return ret
+
+    def prepend_to_c2s_tuple_list(self, obj):
+        ret = self.add_to_tuple_list(obj, method='prepend', mode='c2s')
+        return ret
+
+    def append_to_s2c_field_tuple_list(self, obj):
+        ret = add_to_tuple_list(
+            obj,
+            mode='s2c',
+            field_name='Set-Cookie',
+            method='append'
+            )
+        return ret
+
+    def append_to_c2s_field_tuple_list(self, obj):
+        ret = add_to_tuple_list(
+            obj,
+            mode='c2s',
+            field_name='Cookie',
+            method='append'
+            )
+        return ret
+
+    def prepend_to_s2c_field_tuple_list(self, obj):
+        ret = add_to_tuple_list(
+            obj,
+            mode='s2c',
+            field_name='Set-Cookie',
+            method='prepend'
+            )
+        return ret
+
+    def prepend_to_c2s_field_tuple_list(self, obj):
+        ret = add_to_tuple_list(
+            obj,
+            mode='c2s',
+            field_name='Cookie',
+            method='prepend'
+            )
+        return ret
+
+    def append_to_http_response(self, obj):
+
+        if not in isinstance(obj, wayround_org.http.message.HTTPResponse):
+            raise TypeError("Invalid type of `obj'")
+
+        self.append_to_s2c_field_tuple_list(obj.header_fields)
+
+        return
+
+
+class CookieSafe(Cookie):
+
+    @property
+    def value(self):
+        ret = super().value
+
+        ret = bytes(ret, 'utf-8')
+        ret = base64.b64decode(ret)
+        ret = str(ret, 'utf-8')
+
+        return ret
+
+    @value.setter
+    def value(self, value):
+        if type(value) != str:
+            raise TypeError("`value' value must be of str type")
+
+        value = bytes(value, 'utf-8')
+        value = base64.b64encode(value)
+        value = str(value, 'utf-8')
+
+        super().value = value
+        return
+
+
+class CookieYAML(CookieSafe):
+
+    @property
+    def value(self):
+        ret = super().value
+
+        ret = yaml.load(ret)
+
+        return ret
+
+    @value.setter
+    def value(self, value):
+
+        value = yaml.dump(value)
+
+        super().value = value
+        return
+
+
+class CookiesSafe(Cookies):
 
     @staticmethod
-    def _Cookie():
+    def cookie_class():
         return CookieSafe
+
+
+class CookiesYAML(Cookies):
+
+    @staticmethod
+    def cookie_class():
+        return CookieYAML
 
 
 def parser_test():
@@ -951,7 +1116,7 @@ def parser_test():
             'spacy="wow spaces in value"; Secure'
             ]:
         print('{}{}'.format('    ', i))
-        res, error = parse_cookie_string(i)
+        res, error = parse_cookie_string_s2c(i)
         print('{}error: {}'.format(' ' * 4 * 2, error))
         if True:  # not error:
             for j in [
