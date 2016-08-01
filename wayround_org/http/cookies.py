@@ -30,6 +30,16 @@ def check_mode_value(value):
     return
 
 
+def mode_to_field_name(mode):
+    check_mode_value(mode)
+    ret = None
+    if mode == 'c2s':
+        ret = 'Cookie'
+    else:
+        ret = 'Set-Cookie'
+    return ret
+
+
 def check_add_method(value):
     if value not in ['append', 'prepend']:
         raise ValueError("invalid mode value")
@@ -739,9 +749,9 @@ class Cookies:
         return ret
 
     @classmethod
-    def new_from_reqres(cls, value, src_field_name='Cookie'):
+    def new_from_reqres(cls, value, mode='c2s'):
         ret = cls()
-        if not ret.add_from_reqres(value, src_field_name=src_field_name):
+        if not ret.add_from_reqres(value, mode=mode):
             ret = None
         return ret
 
@@ -796,12 +806,7 @@ class Cookies:
     def render_field_tuple_list(self, mode='s2c'):
         check_mode_value(mode)
 
-        if mode == 's2c':
-            field_name = 'Set-Cookie'
-        elif mode == 'c2s':
-            field_name = 'Cookie'
-        else:
-            raise Exception("programming error")
+        field_name = mode_to_field_name(mode)
 
         ret = []
 
@@ -926,7 +931,11 @@ class Cookies:
 
         return ret
 
-    def add_from_reqres(self, obj, mode='c2s', src_field_name='Cookie'):
+    def add_from_http_reqres(self, obj, mode='c2s'):
+
+        check_mode_value(mode)
+
+        src_field_name = mode_to_field_name(mode)
 
         ret = False
         error = False
