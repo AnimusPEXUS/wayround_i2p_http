@@ -647,9 +647,11 @@ class Cookie:
         return ret
 
     @expires.setter
-    def expores(self, value):
+    def expires(self, value):
+        if isinstance(value, str):
+            value = wayround_org.utils.datetime_rfc5322.str_to_datetime(value)
         if value is not None and not isinstance(value, datetime.datetime):
-            raise TypeError("`expires' must be None or DateTime")
+            raise TypeError("`expires' must be None or datetime.datetime")
         self._expires = value
         return
 
@@ -704,8 +706,8 @@ class Cookie:
 
 class Cookies:
 
-    @staticmethod
-    def cookie_class():
+    @property
+    def cookie_class(self):
         return Cookie
 
     @classmethod
@@ -791,15 +793,29 @@ class Cookies:
 
         return ret
 
-    def render_field_tuple_list(self, mode='s2c', field_name='Set-Cookie'):
-        check_cookie_field_name(field_name)
+    def render_field_tuple_list(self, mode='s2c'):
         check_mode_value(mode)
+
+        if mode == 's2c':
+            field_name = 'Set-Cookie'
+        elif mode == 'c2s':
+            field_name = 'Cookie'
+        else:
+            raise Exception("programming error")
 
         ret = []
 
         for i in sorted(list(self.keys())):
-            ret.append((field_name, i.render_str(mode=mode)))
+            ret.append((field_name, self[i].render_str(mode=mode)))
 
+        return ret
+
+    def render_s2c_field_tuple_list(self):
+        ret = self.render_field_tuple_list(mode='s2c')
+        return ret
+
+    def render_c2s_field_tuple_list(self):
+        ret = self.render_field_tuple_list(mode='c2s')
         return ret
 
     def copy(self):
@@ -822,6 +838,14 @@ class Cookies:
         """
         self.add(self.cookie_class(name, ''))
         return
+
+    def add_from_tuple(self, value):
+        res = self.cookie_class.new_from_tuple(value)
+        ret = False
+        if res is not None:
+            self.add(res)
+            ret = True
+        return ret
 
     def add_from_str_s2c(self, value):
         res = self.cookie_class.new_from_str_s2c(value)
@@ -1099,15 +1123,15 @@ class CookieYAML(CookieSafe):
 
 class CookiesSafe(Cookies):
 
-    @staticmethod
-    def cookie_class():
+    @property
+    def cookie_class(self):
         return CookieSafe
 
 
-class CookiesYAML(Cookies):
+class CookiesYAML(CookiesSafe):
 
-    @staticmethod
-    def cookie_class():
+    @property
+    def cookie_class(self):
         return CookieYAML
 
 
