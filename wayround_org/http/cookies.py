@@ -783,14 +783,19 @@ class Cookies:
 
     def render_tuple_list(self, mode='s2c'):
         check_mode_value(mode)
+
         ret = []
+
         for i in sorted(list(self.keys())):
             ret.append(i.render_tuple(mode='s2c'))
+
         return ret
 
     def render_field_tuple_list(self, mode='s2c', field_name='Set-Cookie'):
-        check_field_name(field_name)
+        check_cookie_field_name(field_name)
         check_mode_value(mode)
+
+        ret = []
 
         for i in sorted(list(self.keys())):
             ret.append((field_name, i.render_str(mode=mode)))
@@ -965,10 +970,10 @@ class Cookies:
         if not isinstance(obj, list):
             raise TypeError("`obj' must be list")
 
-        if fielded_name is not None:
-            check_field_name(field_name)
+        if field_name is not None:
+            check_cookie_field_name(field_name)
 
-        if fielded_name is not None:
+        if field_name is not None:
             tl = self.render_field_tuple_list(
                 mode=mode,
                 field_name=field_name
@@ -1003,7 +1008,7 @@ class Cookies:
         return ret
 
     def append_to_s2c_field_tuple_list(self, obj):
-        ret = add_to_tuple_list(
+        ret = self.add_to_tuple_list(
             obj,
             mode='s2c',
             field_name='Set-Cookie',
@@ -1012,7 +1017,7 @@ class Cookies:
         return ret
 
     def append_to_c2s_field_tuple_list(self, obj):
-        ret = add_to_tuple_list(
+        ret = self.add_to_tuple_list(
             obj,
             mode='c2s',
             field_name='Cookie',
@@ -1021,7 +1026,7 @@ class Cookies:
         return ret
 
     def prepend_to_s2c_field_tuple_list(self, obj):
-        ret = add_to_tuple_list(
+        ret = self.add_to_tuple_list(
             obj,
             mode='s2c',
             field_name='Set-Cookie',
@@ -1030,7 +1035,7 @@ class Cookies:
         return ret
 
     def prepend_to_c2s_field_tuple_list(self, obj):
-        ret = add_to_tuple_list(
+        ret = self.add_to_tuple_list(
             obj,
             mode='c2s',
             field_name='Cookie',
@@ -1040,7 +1045,7 @@ class Cookies:
 
     def append_to_http_response(self, obj):
 
-        if not in isinstance(obj, wayround_org.http.message.HTTPResponse):
+        if not isinstance(obj, wayround_org.http.message.HTTPResponse):
             raise TypeError("Invalid type of `obj'")
 
         self.append_to_s2c_field_tuple_list(obj.header_fields)
