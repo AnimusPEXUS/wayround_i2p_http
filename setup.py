@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='wayround_org_http',
-    version='0.4',
+    version='0.5',
     description='http realisation',
     author='Alexey Gorshkov',
     author_email='animus@wayround.org',
