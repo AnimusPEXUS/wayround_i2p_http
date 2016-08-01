@@ -895,15 +895,17 @@ class Cookies:
             self,
             obj,
             mode='c2s',
-            src_field_name='Cookie'
+            src_field_name=None
             ):
+
+        if src_field_name is None:
+            src_field_name = mode_to_field_name(mode)
+
+        check_mode_value(mode)
+        check_cookie_field_name(src_field_name, 'src_field_name')
 
         ret = False
         error = False
-
-        check_mode_value(mode)
-
-        check_cookie_field_name(src_field_name, 'src_field_name')
 
         for i in range(len(obj) - 1, -1, -1):
 
@@ -1041,37 +1043,41 @@ class Cookies:
         return ret
 
     def append_to_s2c_field_tuple_list(self, obj):
+        mode = 's2c'
         ret = self.add_to_tuple_list(
             obj,
-            mode='s2c',
-            field_name='Set-Cookie',
+            mode=mode,
+            field_name=mode_to_field_name(),
             method='append'
             )
         return ret
 
     def append_to_c2s_field_tuple_list(self, obj):
+        mode = 'c2s'
         ret = self.add_to_tuple_list(
             obj,
-            mode='c2s',
-            field_name='Cookie',
+            mode=mode,
+            field_name=mode_to_field_name(),
             method='append'
             )
         return ret
 
     def prepend_to_s2c_field_tuple_list(self, obj):
+        mode = 's2c'
         ret = self.add_to_tuple_list(
             obj,
-            mode='s2c',
-            field_name='Set-Cookie',
+            mode=mode,
+            field_name=mode_to_field_name(),
             method='prepend'
             )
         return ret
 
     def prepend_to_c2s_field_tuple_list(self, obj):
+        mode = 'c2s'
         ret = self.add_to_tuple_list(
             obj,
-            mode='c2s',
-            field_name='Cookie',
+            mode=mode,
+            field_name=mode_to_field_name(),
             method='prepend'
             )
         return ret
@@ -1090,13 +1096,14 @@ class CookieSafe(Cookie):
 
     @property
     def value(self):
-        ret = super().value
+        # NOTE: super objects does not proxify properties
+        value = Cookie.value.fget(self)
 
-        ret = bytes(ret, 'utf-8')
-        ret = base64.b64decode(ret)
-        ret = str(ret, 'utf-8')
+        value = bytes(value, 'utf-8')
+        value = base64.b64decode(value)
+        value = str(value, 'utf-8')
 
-        return ret
+        return value
 
     @value.setter
     def value(self, value):
@@ -1107,7 +1114,8 @@ class CookieSafe(Cookie):
         value = base64.b64encode(value)
         value = str(value, 'utf-8')
 
-        super().value = value
+        # NOTE: super objects does not proxify properties
+        Cookie.value.fset(self, value)
         return
 
 
@@ -1115,18 +1123,16 @@ class CookieYAML(CookieSafe):
 
     @property
     def value(self):
-        ret = super().value
-
-        ret = yaml.load(ret)
-
-        return ret
+        # NOTE: super objects does not proxify properties
+        value = CookieSafe.value.fget(self)
+        value = yaml.load(value)
+        return value
 
     @value.setter
     def value(self, value):
-
         value = yaml.dump(value)
-
-        super().value = value
+        # NOTE: super objects does not proxify properties
+        CookieSafe.value.fset(self, value)
         return
 
 
