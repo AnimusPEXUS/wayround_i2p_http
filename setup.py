@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='wayround_org_http',
-    version='0.5.4',
+    version='0.6',
     description='http realisation',
     author='Alexey Gorshkov',
     author_email='animus@wayround.org',
@@ -13,7 +13,7 @@ setup(
         'wayround_org.http'
         ],
     install_requires=[
-        'wayround_org_utils >= 1.10'
+        'wayround_org_utils'
         ],
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)'
