@@ -449,6 +449,10 @@ class CookieFields:
         return
 
 
+class CookiesFields(dict):
+    pass
+
+
 class Cookie:
 
     @classmethod
@@ -464,18 +468,24 @@ class Cookie:
             httponly=None
             ):
 
+        ret = None
+
         cf = CookieFields()
 
-        cf.name = name
-        cf.value = value
-        cf.expires = expires
-        cf.max_age = max_age
-        cf.domain = domain
-        cf.path = path
-        cf.secure = secure
-        cf.httponly = httponly
-
         ret = cls(cf)
+
+        try:
+            ret.name = name
+            ret.value = value
+            ret.expires = expires
+            ret.max_age = max_age
+            ret.domain = domain
+            ret.path = path
+            ret.secure = secure
+            ret.httponly = httponly
+        except CookieInvalidValue:
+            ret = None
+
         return ret
 
     @classmethod
@@ -484,10 +494,7 @@ class Cookie:
         if not isinstance(value, tuple):
             raise TypeError("`value' must be inst of tuple")
 
-        try:
-            ret = cls.new_by_values(*value)
-        except CookieInvalidValue:
-            ret = None
+        ret = cls.new_by_values(*value)
 
         return ret
 
@@ -516,6 +523,20 @@ class Cookie:
         return ret
 
     @classmethod
+    def new_from_str_s2c(cls, value):
+
+        if not isinstance(value, str):
+            raise TypeError("`value' must be inst of str")
+
+        value, error = parse_cookie_string_s2c(value)
+
+        ret = None
+        if not error:
+            ret = cls.new_from_dict(value)
+
+        return ret
+
+    @classmethod
     def new_from_dict(cls, value):
 
         ret = cls.new_from_tuple(
@@ -530,20 +551,6 @@ class Cookie:
                 value.get('httponly', None)
                 )
             )
-
-        return ret
-
-    @classmethod
-    def new_from_str_s2c(cls, value):
-
-        if not isinstance(value, str):
-            raise TypeError("`value' must be inst of str")
-
-        value, error = parse_cookie_string_s2c(value)
-
-        ret = None
-        if not error:
-            ret = cls.new_from_dict(value)
 
         return ret
 
@@ -568,13 +575,17 @@ class Cookie:
 
         return ret
 
-    def __init__(self, fields):
+    def __init__(self, fields=None):
+
+        if fields is None:
+            fields = CookieFields()
+
         if isinstance(fields, CookieFields):
             self._fields = fields
         elif isinstance(fields, (Cookie, CookieSafe, CookieJSON, CookieYAML)):
             self._fields = fields.fields
         else:
-            raise TypeError("invalid `fields' type")
+            raise TypeError("invalid `fields' type: {}".format(type(fields)))
         return
 
     @property
@@ -592,8 +603,8 @@ class Cookie:
         return Cookie(self._fields)
 
     @property
-    def cookieSecure(self):
-        return CookieSecure(self._fields)
+    def cookieSafe(self):
+        return CookieSafe(self._fields)
 
     @property
     def cookieJSON(self):
@@ -708,6 +719,10 @@ class Cookie:
             value = wayround_org.utils.datetime_rfc5322.str_to_datetime(value)
         if value is not None and not isinstance(value, datetime.datetime):
             raise TypeError("`expires' must be None or datetime.datetime")
+        if value is not None:
+            wayround_org.utils.datetime_rfc5322.check_datetime_has_tzinfo(
+                value
+                )
         self.fields.expires = value
         return
 
@@ -826,13 +841,25 @@ class Cookies:
             ret = None
         return ret
 
-    def __init__(self):
-        self._cookies_dict = {}
+    def __init__(self, fields=None):
+        if fields is None:
+            fields = CookiesFields()
+
+        if not isinstance(fields, CookiesFields):
+            raise TypeError(
+                "`fields' must be None or CookiesFields type"
+                )
+        self._cookies_dict = fields
         return
 
-    def __getitem__(self, value):
-        ret = self.cookie_class()(self._cookies_dict[value])
+    def __getitem__(self, key):
+        ret = self.cookie_class()(self._cookies_dict[key])
         return ret
+
+    def __setitem__(self, key, value):
+        c = self.cookie_class().new_by_values(key, value)
+        self.add(c)
+        return
 
     def __delitem__(self, value):
         del self._cookies_dict[value]
@@ -846,6 +873,26 @@ class Cookies:
 
     def __iter__(self):
         return iter(self._cookies_dict)
+
+    # @property
+    # def fields(self):
+    #    return self._cookies_dict
+
+    @property
+    def cookies(self):
+        return Cookies(self._cookies_dict)
+
+    @property
+    def cookiesSafe(self):
+        return CookiesSafe(self._cookies_dict)
+
+    @property
+    def cookiesJSON(self):
+        return CookiesJSON(self._cookies_dict)
+
+    @property
+    def cookiesYAML(self):
+        return CookiesYAML(self._cookies_dict)
 
     def keys(self):
         return self._cookies_dict.keys()
@@ -1209,12 +1256,12 @@ class CookieJSON(CookieSafe):
         # value = super().value
         value = CookieSafe.value.fget(self)
 
-        value = json.load(value)
+        value = json.loads(value)
         return value
 
     @value.setter
     def value(self, value):
-        value = json.dump(value)
+        value = json.dumps(value)
 
         # NOTE: super objects does not proxify properties
         # super().value = value
