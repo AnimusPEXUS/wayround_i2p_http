@@ -857,8 +857,11 @@ class Cookies:
         return ret
 
     def __setitem__(self, key, value):
-        c = self.cookie_class().new_by_values(key, value)
-        self.add(c)
+        if key not in self._cookies_dict:
+            c = self.cookie_class().new_by_values(key, value)
+            self.add(c)
+        else:
+            self._cookies_dict[key].value = value
         return
 
     def __delitem__(self, value):
