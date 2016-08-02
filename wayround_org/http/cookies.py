@@ -6,10 +6,13 @@ import regex
 import yaml
 import base64
 import datetime
+import json
 
-import wayround_org.http.message
 import wayround_org.utils.domain
 import wayround_org.utils.datetime_rfc5322
+import wayround_org.utils.class_applicator
+
+import wayround_org.http.message
 
 
 COOKIE_FIELD_NAMES = [
@@ -43,6 +46,12 @@ def mode_to_field_name(mode):
 def check_add_method(value):
     if value not in ['append', 'prepend']:
         raise ValueError("invalid mode value")
+    return
+
+
+def check_raw_value(raw_value):
+    if not isinstance(raw_value, bool):
+        raise TypeError("`raw_value' must be bool")
     return
 
 
@@ -425,7 +434,49 @@ class CookieInvalidC2SString(Exception):
     pass
 
 
+class CookieFields:
+
+    def __init__(self):
+
+        self.name = None
+        self.value = None
+        self.expires = None
+        self.max_age = None
+        self.domain = None
+        self.path = None
+        self.secure = None
+        self.httponly = None
+        return
+
+
 class Cookie:
+
+    @classmethod
+    def new_by_values(
+            cls,
+            name,
+            value='',
+            expires=None,
+            max_age=None,
+            domain=None,
+            path=None,
+            secure=None,
+            httponly=None
+            ):
+
+        cf = CookieFields()
+
+        cf.name = name
+        cf.value = value
+        cf.expires = expires
+        cf.max_age = max_age
+        cf.domain = domain
+        cf.path = path
+        cf.secure = secure
+        cf.httponly = httponly
+
+        ret = cls(cf)
+        return ret
 
     @classmethod
     def new_from_tuple(cls, value):
@@ -434,7 +485,7 @@ class Cookie:
             raise TypeError("`value' must be inst of tuple")
 
         try:
-            ret = cls(*value)
+            ret = cls.new_by_values(*value)
         except CookieInvalidValue:
             ret = None
 
@@ -468,14 +519,16 @@ class Cookie:
     def new_from_dict(cls, value):
 
         ret = cls.new_from_tuple(
-            value.get('name', None),
-            value.get('value', None),
-            value.get('expires', None),
-            value.get('max-age', None),
-            value.get('domain', None),
-            value.get('path', None),
-            value.get('secure', None),
-            value.get('httponly', None)
+            (
+                value.get('name', None),
+                value.get('value', None),
+                value.get('expires', None),
+                value.get('max-age', None),
+                value.get('domain', None),
+                value.get('path', None),
+                value.get('secure', None),
+                value.get('httponly', None)
+                )
             )
 
         return ret
@@ -515,66 +568,58 @@ class Cookie:
 
         return ret
 
-    def __init__(
-            self,
-            name,
-            value='',
-            expires=None,
-            max_age=None,
-            domain=None,
-            path=None,
-            secure=None,
-            httponly=None
-            ):
-
-        self._name = None
-        self._value = ''
-        self._expires = None
-        self._max_age = None
-        self._domain = None
-        self._path = None
-        self._secure = None
-        self._httponly = None
-
-        self.name = name
-        self.value = value
-        self.expires = expires
-        self.max_age = max_age
-        self.domain = domain
-        self.path = path
-        self.secure = secure
-        self.httponly = httponly
+    def __init__(self, fields):
+        if isinstance(fields, CookieFields):
+            self._fields = fields
+        elif isinstance(fields, (Cookie, CookieSafe, CookieJSON, CookieYAML)):
+            self._fields = fields.fields
+        else:
+            raise TypeError("invalid `fields' type")
         return
 
+    @property
+    def fields(self):
+        return self._fields
+
     def copy(self):
-        ret = type(self).new_from_tuple(
-            self.name,
-            self.value,
-            # TODO: datetime has no __copy__ method.
-            #        need to somehow insure in copy safety
-            copy.deepcopy(self.expires),
-            self.max_age,
-            self.domain,
-            self.path,
-            self.secure,
-            self.httponly,
-            )
+        # TODO: datetime has no __copy__ method.
+        #        need to somehow insure in copy safety of .expires
+        ret = type(self)(copy.deepcopy(self._fields))
         return ret
 
-    def render_str(self, field_name=None, mode='s2c'):
-        ret = ''
+    @property
+    def cookie(self):
+        return Cookie(self._fields)
 
+    @property
+    def cookieSecure(self):
+        return CookieSecure(self._fields)
+
+    @property
+    def cookieJSON(self):
+        return CookieJSON(self._fields)
+
+    @property
+    def cookieYAML(self):
+        return CookieYAML(self._fields)
+
+    def render_str(self, field_name=None, mode='s2c'):
         check_mode_value(mode)
 
         if field_name is not None:
             check_cookie_field_name(field_name, 'field_name')
 
+        ret = ''
+
+        if field_name is not None:
             ret += '{}: '.format(field_name)
 
         if len(ret) != 0:
             ret += ' '
 
-        ret += '{}={}'.format(self.name, self.value)
+        ret += '{}='.format(self.name)
+
+        ret += '{}'.format(self.value)
 
         if mode == 's2c':
 
@@ -608,6 +653,7 @@ class Cookie:
         check_mode_value(mode)
 
         ret.append(self.name)
+
         ret.append(self.value)
 
         if mode == 's2c':
@@ -626,19 +672,19 @@ class Cookie:
 
     @property
     def name(self):
-        ret = self._name
+        ret = self.fields.name
         return ret
 
     @name.setter
     def name(self, value):
         if type(value) != str:
             raise TypeError("`name' value must be of str type")
-        self._name = value
+        self.fields.name = value
         return
 
     @property
     def value(self):
-        ret = self._value
+        ret = self.fields.value
         return ret
 
     @value.setter
@@ -648,12 +694,12 @@ class Cookie:
         for i in value:
             if not COOKIE_OCTET_RE_C.match(i):
                 raise CookieInvalidValue("supplied cookie value is unsafe")
-        self._value = value
+        self.fields.value = value
         return
 
     @property
     def expires(self):
-        ret = self._expires
+        ret = self.fields.expires
         return ret
 
     @expires.setter
@@ -662,61 +708,72 @@ class Cookie:
             value = wayround_org.utils.datetime_rfc5322.str_to_datetime(value)
         if value is not None and not isinstance(value, datetime.datetime):
             raise TypeError("`expires' must be None or datetime.datetime")
-        self._expires = value
+        self.fields.expires = value
         return
 
     @property
     def max_age(self):
-        ret = self._max_age
+        ret = self.fields.max_age
         return ret
 
     @max_age.setter
     def max_age(self, value):
         if value is not None and not isinstance(value, datetime.datetime):
             raise TypeError("`max_age' must be None or DateTime")
-        self._max_age = value
+        self.fields.max_age = value
+        return
+
+    @property
+    def domain(self):
+        ret = self.fields.domain
+        return ret
+
+    @domain.setter
+    def domain(self, value):
+        if value is not None and type(value) != str:
+            raise TypeError("`domain' value must be None or of str type")
+        self.fields.domain = value
         return
 
     @property
     def path(self):
-        ret = self._path
+        ret = self.fields.path
         return ret
 
     @path.setter
     def path(self, value):
         if value is not None and type(value) != str:
             raise TypeError("`path' value must be None or of str type")
-        self._path = value
+        self.fields.path = value
         return
 
     @property
     def secure(self):
-        ret = self._secure
+        ret = self.fields.secure
         return ret
 
     @secure.setter
     def secure(self, value):
         if value is not None and type(value) != bool:
             raise TypeError("`secure' value must be None or of bool type")
-        self._secure = value
+        self.fields.secure = value
         return
 
     @property
     def httponly(self):
-        ret = self._httponly
+        ret = self.fields.httponly
         return ret
 
     @httponly.setter
     def httponly(self, value):
         if value is not None and type(value) != bool:
             raise TypeError("`httponly' value must be None or of bool type")
-        self._httponly = value
+        self.fields.httponly = value
         return
 
 
 class Cookies:
 
-    @property
     def cookie_class(self):
         return Cookie
 
@@ -774,7 +831,7 @@ class Cookies:
         return
 
     def __getitem__(self, value):
-        ret = self._cookies_dict[value]
+        ret = self.cookie_class()(self._cookies_dict[value])
         return ret
 
     def __delitem__(self, value):
@@ -793,44 +850,14 @@ class Cookies:
     def keys(self):
         return self._cookies_dict.keys()
 
-    def render_tuple_list(self, mode='s2c'):
-        check_mode_value(mode)
-
-        ret = []
-
-        for i in sorted(list(self.keys())):
-            ret.append(i.render_tuple(mode='s2c'))
-
-        return ret
-
-    def render_field_tuple_list(self, mode='s2c'):
-        check_mode_value(mode)
-
-        field_name = mode_to_field_name(mode)
-
-        ret = []
-
-        for i in sorted(list(self.keys())):
-            ret.append((field_name, self[i].render_str(mode=mode)))
-
-        return ret
-
-    def render_s2c_field_tuple_list(self):
-        ret = self.render_field_tuple_list(mode='s2c')
-        return ret
-
-    def render_c2s_field_tuple_list(self):
-        ret = self.render_field_tuple_list(mode='c2s')
-        return ret
-
     def copy(self):
         ret = type(self).new_from_cookies(self)
         return ret
 
     def add(self, value):
-        if type(value) != self.cookie_class:
+        if type(value) != self.cookie_class():
             raise TypeError(
-                "`value' must be of type {}".format(self.cookie_class)
+                "`value' must be of type {}".format(self.cookie_class())
                 )
         self._cookies_dict[value.name] = value
         return
@@ -845,7 +872,7 @@ class Cookies:
         return
 
     def add_from_tuple(self, value):
-        res = self.cookie_class.new_from_tuple(value)
+        res = self.cookie_class().new_from_tuple(value)
         ret = False
         if res is not None:
             self.add(res)
@@ -853,7 +880,7 @@ class Cookies:
         return ret
 
     def add_from_str_s2c(self, value):
-        res = self.cookie_class.new_from_str_s2c(value)
+        res = self.cookie_class().new_from_str_s2c(value)
         ret = False
         if res is not None:
             self.add(res)
@@ -866,7 +893,7 @@ class Cookies:
         if not error:
 
             for i in res:
-                res2 = self.cookie_class.new_from_tuple(i)
+                res2 = self.cookie_class().new_from_tuple(i)
                 if res2 is None:
                     break
                 self.add(res2)
@@ -876,7 +903,7 @@ class Cookies:
         return ret
 
     def add_from_morsel(self, python_morsel):
-        res = self.cookie_class.new_from_morsel(python_morsel)
+        res = self.cookie_class().new_from_morsel(python_morsel)
         ret = False
         if res is not None:
             self.add(res)
@@ -884,7 +911,7 @@ class Cookies:
         return ret
 
     def add_from_dict(self, d):
-        res = self.cookie_class.new_from_dict(d)
+        res = self.cookie_class().new_from_dict(d)
         ret = False
         if res is not None:
             self.add(res)
@@ -991,6 +1018,43 @@ class Cookies:
 
         return ret
 
+    def render_tuple_list(self, mode='s2c'):
+        check_mode_value(mode)
+
+        ret = []
+
+        for i in sorted(list(self.keys())):
+            ret.append(
+                i.render_tuple(mode='s2c')
+                )
+
+        return ret
+
+    def render_field_tuple_list(self, mode='s2c'):
+        check_mode_value(mode)
+
+        field_name = mode_to_field_name(mode)
+
+        ret = []
+
+        for i in sorted(list(self.keys())):
+            ret.append(
+                (
+                    field_name,
+                    self[i].render_str(mode=mode)
+                    )
+                )
+
+        return ret
+
+    def render_s2c_field_tuple_list(self):
+        ret = self.render_field_tuple_list(mode='s2c')
+        return ret
+
+    def render_c2s_field_tuple_list(self):
+        ret = self.render_field_tuple_list(mode='c2s')
+        return ret
+
     def add_to_tuple_list(
             self,
             obj,
@@ -1027,19 +1091,35 @@ class Cookies:
         return
 
     def append_to_s2c_tuple_list(self, obj):
-        ret = self.add_to_tuple_list(obj, method='append', mode='s2c')
+        ret = self.add_to_tuple_list(
+            obj,
+            method='append',
+            mode='s2c'
+            )
         return ret
 
     def append_to_c2s_tuple_list(self, obj):
-        ret = self.add_to_tuple_list(obj, method='append', mode='c2s')
+        ret = self.add_to_tuple_list(
+            obj,
+            method='append',
+            mode='c2s'
+            )
         return ret
 
     def prepend_to_s2c_tuple_list(self, obj):
-        ret = self.add_to_tuple_list(obj, method='prepend', mode='s2c')
+        ret = self.add_to_tuple_list(
+            obj,
+            method='prepend',
+            mode='s2c'
+            )
         return ret
 
     def prepend_to_c2s_tuple_list(self, obj):
-        ret = self.add_to_tuple_list(obj, method='prepend', mode='c2s')
+        ret = self.add_to_tuple_list(
+            obj,
+            method='prepend',
+            mode='c2s'
+            )
         return ret
 
     def append_to_s2c_field_tuple_list(self, obj):
@@ -1097,6 +1177,7 @@ class CookieSafe(Cookie):
     @property
     def value(self):
         # NOTE: super objects does not proxify properties
+        # value = super().value
         value = Cookie.value.fget(self)
 
         value = bytes(value, 'utf-8')
@@ -1115,7 +1196,29 @@ class CookieSafe(Cookie):
         value = str(value, 'utf-8')
 
         # NOTE: super objects does not proxify properties
+        # super().value = value
         Cookie.value.fset(self, value)
+        return
+
+
+class CookieJSON(CookieSafe):
+
+    @property
+    def value(self):
+        # NOTE: super objects does not proxify properties
+        # value = super().value
+        value = CookieSafe.value.fget(self)
+
+        value = json.load(value)
+        return value
+
+    @value.setter
+    def value(self, value):
+        value = json.dump(value)
+
+        # NOTE: super objects does not proxify properties
+        # super().value = value
+        CookieSafe.value.fset(self, value)
         return
 
 
@@ -1124,28 +1227,36 @@ class CookieYAML(CookieSafe):
     @property
     def value(self):
         # NOTE: super objects does not proxify properties
+        # value = super().value
         value = CookieSafe.value.fget(self)
+
         value = yaml.load(value)
         return value
 
     @value.setter
     def value(self, value):
         value = yaml.dump(value)
+
         # NOTE: super objects does not proxify properties
+        # super().value = value
         CookieSafe.value.fset(self, value)
         return
 
 
 class CookiesSafe(Cookies):
 
-    @property
     def cookie_class(self):
         return CookieSafe
 
 
+class CookiesJSON(CookiesSafe):
+
+    def cookie_class(self):
+        return CookieJSON
+
+
 class CookiesYAML(CookiesSafe):
 
-    @property
     def cookie_class(self):
         return CookieYAML
 
