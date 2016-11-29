@@ -8,11 +8,11 @@ import base64
 import datetime
 import json
 
-import wayround_org.utils.domain
-import wayround_org.utils.datetime_rfc5322
-import wayround_org.utils.class_applicator
+import wayround_i2p.utils.domain
+import wayround_i2p.utils.datetime_rfc5322
+import wayround_i2p.utils.class_applicator
 
-import wayround_org.http.message
+import wayround_i2p.http.message
 
 
 COOKIE_FIELD_NAMES = [
@@ -45,7 +45,7 @@ def mode_to_field_name(mode):
 
 def check_add_method(value):
     if value not in ['append', 'prepend']:
-        raise ValueError("invalid mode value")
+        raise ValueError("invalid method value")
     return
 
 
@@ -113,7 +113,7 @@ COOKIE_STRING_RE = r'({cookie-pair})(\; ({cookie-pair}))*'.format_map(
 
 EXPIRES_AV_RE = r'Expires=({sane-cookie-date})'.format_map(
     {
-        'sane-cookie-date': wayround_org.utils.datetime_rfc5322.
+        'sane-cookie-date': wayround_i2p.utils.datetime_rfc5322.
         DATETIME_EXPRESSION
         }
     )
@@ -126,7 +126,7 @@ MAX_AGE_AV_RE = r'Max-Age=({MAX_AGE_VALUE_RE})'.format(
     )
 
 DOMAIN_AV_RE = r'Domain=\.?({domain})'.format(
-    domain=wayround_org.utils.domain.DOMAIN_RE
+    domain=wayround_i2p.utils.domain.DOMAIN_RE
     )
 
 PATH_VALUE_RE = r'(.*)(?<!.*(({CTL_RE}|\;).*))'.format(CTL_RE=CTL_RE)
@@ -358,7 +358,7 @@ def parse_cookie_string_s2c(data):
             data = data[re_res.end():]
 
             if re_res_attr_name == 'Expires=':
-                re_res  = wayround_org.utils.datetime_rfc5322.\
+                re_res  = wayround_i2p.utils.datetime_rfc5322.\
                     match_DATETIME_EXPRESSION_C(
                         data
                         )
@@ -369,7 +369,7 @@ def parse_cookie_string_s2c(data):
 
                 _t = data[re_res.start():re_res.end()]
                 data = data[re_res.end():]
-                ret['expires'] =  wayround_org.utils.datetime_rfc5322.\
+                ret['expires'] =  wayround_i2p.utils.datetime_rfc5322.\
                     str_to_datetime(
                         None,
                         already_parsed=re_res
@@ -391,7 +391,7 @@ def parse_cookie_string_s2c(data):
                 if data.startswith('.'):
                     ret['domain'] += '.'
                     data = data[1:]
-                re_res = wayround_org.utils.domain.DOMAIN_RE_C.match(data)
+                re_res = wayround_i2p.utils.domain.DOMAIN_RE_C.match(data)
                 if re_res is None:
                     error = True
                     break
@@ -456,7 +456,7 @@ class CookiesFields(dict):
 class Cookie:
 
     @classmethod
-    def new_by_values(
+    def new_from_values(
             cls,
             name,
             value='',
@@ -494,7 +494,7 @@ class Cookie:
         if not isinstance(value, tuple):
             raise TypeError("`value' must be inst of tuple")
 
-        ret = cls.new_by_values(*value)
+        ret = cls.new_from_values(*value)
 
         return ret
 
@@ -636,7 +636,7 @@ class Cookie:
 
             if self.expires is not None:
                 ret += '; Expires={}'.format(
-                    wayround_org.utils.datetime_rfc5322.datetime_to_str(
+                    wayround_i2p.utils.datetime_rfc5322.datetime_to_str(
                         self.expires
                         )
                     )
@@ -716,11 +716,11 @@ class Cookie:
     @expires.setter
     def expires(self, value):
         if isinstance(value, str):
-            value = wayround_org.utils.datetime_rfc5322.str_to_datetime(value)
+            value = wayround_i2p.utils.datetime_rfc5322.str_to_datetime(value)
         if value is not None and not isinstance(value, datetime.datetime):
             raise TypeError("`expires' must be None or datetime.datetime")
         if value is not None:
-            wayround_org.utils.datetime_rfc5322.check_datetime_has_tzinfo(
+            wayround_i2p.utils.datetime_rfc5322.check_datetime_has_tzinfo(
                 value
                 )
         self.fields.expires = value
@@ -821,9 +821,9 @@ class Cookies:
         return ret
 
     @classmethod
-    def new_from_reqres(cls, value, mode='c2s'):
+    def from_http_reqres(cls, value, mode='c2s'):
         ret = cls()
-        if not ret.add_from_reqres(value, mode=mode):
+        if not ret.add_from_http_reqres(value, mode=mode):
             ret = None
         return ret
 
@@ -921,6 +921,14 @@ class Cookies:
         self.add(self.cookie_class(name, ''))
         return
 
+    def add_from_values(self, *args, **kwargs):
+        res = self.cookie_class().new_from_values(*args, **kwargs)
+        ret = False
+        if res is not None:
+            self.add(res)
+            ret = True
+        return ret
+
     def add_from_tuple(self, value):
         res = self.cookie_class().new_from_tuple(value)
         ret = False
@@ -988,7 +996,7 @@ class Cookies:
 
             header_field = obj[i]
             header_field_name = \
-                wayround_org.http.message.normalize_header_field_name(
+                wayround_i2p.http.message.normalize_header_field_name(
                     header_field[0]
                     )
 
@@ -1022,8 +1030,8 @@ class Cookies:
         type_obj = type(obj)
 
         if type_obj in [
-                wayround_org.http.message.HTTPRequest,
-                wayround_org.http.message.HTTPResponse
+                wayround_i2p.http.message.HTTPRequest,
+                wayround_i2p.http.message.HTTPResponse
                 ]:
             ret = self.add_from_field_tuple_list(
                 obj,
@@ -1043,7 +1051,8 @@ class Cookies:
 
         ret = False
 
-        if not 'HTTP_COOKIE' in wsgi_request:
+        if 'HTTP_COOKIE' not in wsgi_request:
+            # NOTE: absence of 'HTTP_COOKIE' is not treated as error
             ret = True
 
         else:
@@ -1120,20 +1129,17 @@ class Cookies:
             raise TypeError("`obj' must be list")
 
         if field_name is not None:
-            check_cookie_field_name(field_name)
+            check_cookie_field_name(field_name, 'field_name')
 
         if field_name is not None:
-            tl = self.render_field_tuple_list(
-                mode=mode,
-                field_name=field_name
-                )
+            tl = self.render_field_tuple_list(mode=mode)
         else:
             tl = self.render_tuple_list(mode=mode)
 
         for i in tl:
-            if mode == 'append':
+            if method == 'append':
                 obj.append(i)
-            elif mode == 'prepend':
+            elif method == 'prepend':
                 obj.insert(0, i)
             else:
                 raise Exception("programming error")
@@ -1177,7 +1183,7 @@ class Cookies:
         ret = self.add_to_tuple_list(
             obj,
             mode=mode,
-            field_name=mode_to_field_name(),
+            field_name=mode_to_field_name(mode),
             method='append'
             )
         return ret
@@ -1187,7 +1193,7 @@ class Cookies:
         ret = self.add_to_tuple_list(
             obj,
             mode=mode,
-            field_name=mode_to_field_name(),
+            field_name=mode_to_field_name(mode),
             method='append'
             )
         return ret
@@ -1197,7 +1203,7 @@ class Cookies:
         ret = self.add_to_tuple_list(
             obj,
             mode=mode,
-            field_name=mode_to_field_name(),
+            field_name=mode_to_field_name(mode),
             method='prepend'
             )
         return ret
@@ -1207,14 +1213,14 @@ class Cookies:
         ret = self.add_to_tuple_list(
             obj,
             mode=mode,
-            field_name=mode_to_field_name(),
+            field_name=mode_to_field_name(mode),
             method='prepend'
             )
         return ret
 
     def append_to_http_response(self, obj):
 
-        if not isinstance(obj, wayround_org.http.message.HTTPResponse):
+        if not isinstance(obj, wayround_i2p.http.message.HTTPResponse):
             raise TypeError("Invalid type of `obj'")
 
         self.append_to_s2c_field_tuple_list(obj.header_fields)
@@ -1313,6 +1319,8 @@ class CookiesYAML(CookiesSafe):
 
 def parser_test():
 
+    space = ' ' * 4 * 2
+
     for i in [
             'lang=; Expires=Sun, 06 Nov 1994 08:49:37 GMT',
             ' lang=; Expires=Sun, 06 Nov 1994 08:49:37 GMT',
@@ -1322,7 +1330,7 @@ def parser_test():
             ]:
         print('{}{}'.format('    ', i))
         res, error = parse_cookie_string_s2c(i)
-        print('{}error: {}'.format(' ' * 4 * 2, error))
+        print('{}error: {}'.format(space, error))
 
         for j in [
                 'name', 'value', 'expires', 'max-age',

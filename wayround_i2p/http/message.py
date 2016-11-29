@@ -7,7 +7,7 @@ import logging
 import ssl
 import datetime
 
-import wayround_org.utils.socket
+import wayround_i2p.utils.socket
 
 
 HTTP_MESSAGE_REQUEST_REGEXP = re.compile(
@@ -37,7 +37,7 @@ class HTTPRequest:
     instances and throw them away.
 
     this class instances only formed by http server implimentations, like
-    wayround_org.server.http_server
+    wayround_i2p.server.http_server
     """
 
     def __init__(
@@ -242,7 +242,7 @@ class HTTPResponse:
             if len(data) == 0:
                 break
 
-            # TODO: use wayround_org.utils.stream module here
+            # TODO: use wayround_i2p.utils.stream module here
             to_send = data[:bs]
             data = data[bs:]
 
@@ -387,7 +387,7 @@ def read_header_first_line(sock, limit=(1 * 1024 ** 2)):
     ret = None, None
 
     while True:
-        res = wayround_org.utils.socket.nb_recv(sock, bs=1)
+        res = wayround_i2p.utils.socket.nb_recv(sock, bs=1)
 
         if len(res) == 0:
             ret = None, None
@@ -429,7 +429,7 @@ def read_header(sock, limit=(1 * 1024 ** 2)):
 
         while True:
 
-            res = wayround_org.utils.socket.nb_recv(sock, bs=1)
+            res = wayround_i2p.utils.socket.nb_recv(sock, bs=1)
 
             if len(res) == 0:
                 ret = None, None
@@ -570,8 +570,8 @@ def read_and_parse_header(
     """
 
     if header_already_readen and/or header_already_parsed defined, they
-    should be results of wayround_org.http.message.read_header() and
-    wayround_org.http.message.parse_header() respectively.
+    should be results of wayround_i2p.http.message.read_header() and
+    wayround_i2p.http.message.parse_header() respectively.
 
     Note 1: if header_already_parsed is given, then:
             header_already_readen is not used

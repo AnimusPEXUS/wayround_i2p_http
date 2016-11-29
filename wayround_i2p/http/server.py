@@ -2,7 +2,7 @@
 import pprint
 import logging
 
-import wayround_org.http.message
+import wayround_i2p.http.message
 
 
 class HTTPServer:
@@ -24,9 +24,9 @@ class HTTPServer:
         callable.
 
         func - must be callable and accept arguments:
-            request - instance of wayround_org.http.message.HTTPRequest
+            request - instance of wayround_i2p.http.message.HTTPRequest
 
-        func - must return instance of wayround_org.http.message.HTTPResponse
+        func - must return instance of wayround_i2p.http.message.HTTPResponse
         """
         if not callable(func):
             raise ValueError("`func' must be callable")
@@ -59,7 +59,7 @@ class HTTPServer:
 
         (header_bytes, line_terminator,
             request_line_parsed, header_fields,
-            error) = wayround_org.http.message.read_and_parse_header(
+            error) = wayround_i2p.http.message.read_and_parse_header(
                 sock,
                 self._header_size_limit,
                 header_already_parsed=header_already_parsed,
@@ -68,7 +68,7 @@ class HTTPServer:
 
         if not error:
 
-            req = wayround_org.http.message.HTTPRequest(
+            req = wayround_i2p.http.message.HTTPRequest(
                 transaction_id,
                 serv,
                 serv_stop_event,
@@ -80,9 +80,9 @@ class HTTPServer:
 
             res = self._func(req)
 
-            if not isinstance(res, wayround_org.http.message.HTTPResponse):
+            if not isinstance(res, wayround_i2p.http.message.HTTPResponse):
                 raise TypeError(
-                    "only wayround_org.http.message.HTTPResponse type is "
+                    "only wayround_i2p.http.message.HTTPResponse type is "
                     "acceptable as response"
                     )
 
